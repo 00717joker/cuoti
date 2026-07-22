@@ -1,0 +1,2027 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="错题管理">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="data:application/json,{}">
+<title>错题管理智能体</title>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<style>
+:root{--bg:#f0f2f5;--card:#fff;--pri:#4f46e5;--pri2:#4338ca;--danger:#ef4444;--succ:#10b981;--txt:#1f2937;--t2:#6b7280;--bd:#e5e7eb;--sh:0 1px 3px rgba(0,0,0,.06);--r:12px}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--txt);min-height:100dvh;padding-bottom:80px;-webkit-tap-highlight-color:transparent}
+.container{max-width:640px;margin:0 auto;padding:12px}
+header{background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;padding:16px 0;text-align:center;margin-bottom:12px;border-radius:0 0 var(--r) var(--r)}
+header h1{font-size:1.3rem;font-weight:700}
+header p{opacity:.8;margin-top:2px;font-size:.8rem}
+.stats-row{display:flex;gap:8px;margin-bottom:12px}
+.st{flex:1;background:var(--card);border-radius:var(--r);padding:12px 8px;text-align:center;box-shadow:var(--sh)}
+.st .n{font-size:1.3rem;font-weight:700;color:var(--pri)}
+.st .l{font-size:.65rem;color:var(--t2)}
+.st.m .n{color:var(--succ)}.st.a .n{color:#f59e0b}
+.bottom-nav{position:fixed;bottom:0;left:0;right:0;z-index:100;background:var(--card);border-top:1px solid var(--bd);box-shadow:0 -1px 6px rgba(0,0,0,.06);padding:4px 0 env(safe-area-inset-bottom,4px)}
+.bn-inner{display:flex}
+.bn-i{flex:1;display:flex;flex-direction:column;align-items:center;gap:1px;padding:6px 0;border:none;background:0;cursor:pointer;color:var(--t2);font-size:.6rem;transition:color .2s}
+.bn-i .ic{font-size:1.1rem}
+.bn-i.active{color:var(--pri)}
+.tabs{display:flex;gap:4px;margin-bottom:12px;background:var(--card);border-radius:var(--r);padding:4px;box-shadow:var(--sh)}
+.tab{flex:1;padding:9px 10px;border:none;background:0;border-radius:10px;cursor:pointer;font-size:.8rem;color:var(--t2);font-weight:500}
+.tab.active{background:var(--pri);color:#fff}
+.card{background:var(--card);border-radius:var(--r);box-shadow:var(--sh);padding:16px;margin-bottom:12px}
+.card h2{font-size:1rem;margin-bottom:12px}
+.form-row{display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end}
+.fg{display:flex;flex-direction:column;gap:3px;min-width:80px;flex:1}
+.fg label{font-size:.7rem;color:var(--t2);font-weight:500}
+.fg input,.fg select{padding:10px 8px;border:1.5px solid var(--bd);border-radius:8px;font-size:.9rem;outline:none;width:100%}
+.fg input:focus,.fg select:focus{border-color:var(--pri)}
+.btn{padding:10px 14px;border:none;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer;white-space:nowrap}
+.btn-p{background:var(--pri);color:#fff}.btn-d{background:var(--danger);color:#fff}
+.btn-o{background:#fff;border:1.5px solid var(--bd);color:var(--txt)}
+.btn-s{background:var(--succ);color:#fff}
+.btn-sm{padding:6px 10px;font-size:.75rem}
+.btn-xs{padding:4px 8px;font-size:.68rem;border-radius:6px}
+.badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:.7rem;font-weight:500}
+.badge-ch{background:#dbeafe;color:#1d4ed8}
+.badge-m{background:#d1fae5;color:#065f46}
+.badge-e{font-size:.65rem;padding:2px 6px}
+.badge-careless{background:#fef3c7;color:#92400e}
+.badge-concept{background:#fce7f3;color:#9d174d}
+.badge-calculation{background:#e0e7ff;color:#3730a3}
+.badge-method{background:#ffe4e6;color:#9f1239}
+.batch-area{width:100%;min-height:70px;padding:10px;border:1.5px dashed var(--bd);border-radius:8px;font-size:.85rem;font-family:inherit;outline:none;resize:vertical}
+.ocr-section{border:2px dashed var(--bd);border-radius:var(--r);padding:22px 16px;text-align:center;cursor:pointer;background:#fafbfc}
+.ocr-section:active{border-color:var(--pri);background:#f5f3ff}
+.ocr-section .ui{font-size:2rem;display:block;margin-bottom:4px}
+.ocr-section .ut{color:var(--t2);font-size:.85rem}
+.ocr-section .uh{color:#9ca3af;font-size:.7rem;margin-top:2px}
+.ocr-section input[type=file]{display:none}
+.ocr-preview{position:relative;width:100%}
+.ocr-preview img{width:100%;max-height:220px;object-fit:contain;border-radius:8px;box-shadow:var(--sh)}
+.ocr-preview .rm{position:absolute;top:-8px;right:-8px;width:28px;height:28px;background:var(--danger);color:#fff;border:none;border-radius:50%;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center}
+.ocr-prog{margin:10px 0;background:var(--bd);border-radius:8px;height:6px;overflow:hidden}
+.ocr-prog .bar{height:100%;background:linear-gradient(90deg,#4f46e5,#7c3aed);border-radius:8px;transition:width .3s}
+.ocr-st{font-size:.75rem;color:var(--t2);margin:6px 0;text-align:center}
+.ocr-rw{overflow-x:auto;margin:0 -16px;padding:0 16px}
+.ocr-tb{width:100%;min-width:460px;border-collapse:collapse}
+.ocr-tb th{font-size:.65rem;color:var(--t2);padding:4px 3px;text-align:left}
+.ocr-tb td{padding:3px}
+.ocr-tb input{width:100%;padding:6px 4px;border:1px solid var(--bd);border-radius:5px;font-size:.8rem;outline:none}
+.ocr-a{display:flex;gap:6px;margin-top:10px;justify-content:flex-end}
+.pr-prog{background:var(--bd);border-radius:8px;height:6px;margin-bottom:10px;overflow:hidden}
+.pr-prog .bar{height:100%;background:linear-gradient(90deg,var(--succ),#34d399);border-radius:8px;transition:width .3s}
+.pr-sum{display:flex;gap:10px;margin-bottom:10px;font-size:.75rem}
+.pr-sum span{display:flex;align-items:center;gap:4px}
+.pr-sum .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.pl{list-style:none}
+.pi{display:flex;align-items:center;gap:6px;padding:10px 6px;border-bottom:1px solid var(--bd);font-size:.85rem}
+.pi:last-child{border-bottom:none}
+.pi.ok{background:#f0fdf4}.pi.ng{background:#fef2f2}.pi.mst{opacity:.5}
+.pn{font-weight:700;color:var(--pri);min-width:44px;font-size:.85rem}
+.pc{background:#ede9fe;color:#6d28d9;padding:2px 8px;border-radius:20px;font-size:.65rem;white-space:nowrap}
+.ps{color:var(--t2);font-size:.75rem}.pm{margin-left:auto;display:flex;align-items:center;gap:4px;flex-shrink:0}
+.pct{font-size:.7rem;color:var(--danger)}
+.modal-bg{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:300;display:flex;align-items:center;justify-content:center}
+.modal{background:#fff;border-radius:var(--r);padding:20px;max-width:320px;width:90%;box-shadow:0 8px 30px rgba(0,0,0,.15)}
+.modal h3{font-size:1rem;margin-bottom:12px}
+.modal .etypes{display:flex;flex-wrap:wrap;gap:8px}
+.modal .etypes button{padding:8px 14px;border:1.5px solid var(--bd);border-radius:8px;background:#fff;font-size:.8rem;cursor:pointer;transition:all .15s}
+.modal .etypes button:hover,.modal .etypes button.sel{border-color:var(--pri);background:#f5f3ff}
+.modal .etypes button.sel{color:var(--pri);font-weight:600}
+.modal .skip{display:block;width:100%;margin-top:10px;padding:8px;background:0;border:none;color:var(--t2);font-size:.75rem;cursor:pointer}
+.stat-section{margin-bottom:16px}
+.stat-section h3{font-size:.85rem;font-weight:600;margin-bottom:8px;color:var(--t2)}
+.etype-bars{display:flex;flex-direction:column;gap:6px}
+.etype-row{display:flex;align-items:center;gap:8px}
+.etype-row .elabel{font-size:.75rem;min-width:60px}
+.etype-row .ebar-bg{flex:1;background:var(--bd);border-radius:4px;height:20px;overflow:hidden}
+.etype-row .ebar-fill{height:100%;border-radius:4px;display:flex;align-items:center;padding:0 6px;font-size:.65rem;color:#fff;font-weight:600;transition:width .5s;min-width:24px}
+.heatmap-grid{display:flex;flex-direction:column;gap:4px}
+.hm-row{display:flex;align-items:center;gap:6px;font-size:.75rem}
+.hm-row .hm-ch{min-width:50px;font-weight:600}
+.hm-row .hm-bar-bg{flex:1;background:var(--bd);border-radius:4px;height:24px;overflow:hidden;position:relative}
+.hm-row .hm-bar-fill{height:100%;border-radius:4px;display:flex;align-items:center;padding:0 6px;font-size:.65rem;font-weight:600;color:#fff;transition:width .5s}
+.hm-row .hm-num{margin-left:4px;font-size:.7rem;color:var(--t2);min-width:36px;text-align:right}
+.hm-legend{display:flex;gap:8px;align-items:center;font-size:.65rem;color:var(--t2);margin-bottom:8px;flex-wrap:wrap}
+.hm-legend span{display:flex;align-items:center;gap:3px}
+.hm-legend .swatch{width:12px;height:12px;border-radius:3px;display:inline-block}
+.search-box{width:100%;padding:10px 12px;border:1.5px solid var(--bd);border-radius:8px;font-size:.85rem;outline:none;margin-bottom:10px}
+.search-box:focus{border-color:var(--pri)}
+.tw{overflow-x:auto;margin:0 -16px;padding:0 16px}
+table{width:100%;min-width:560px;border-collapse:collapse}
+th,td{padding:7px 6px;text-align:left;border-bottom:1px solid var(--bd);font-size:.75rem}
+th{color:var(--t2);font-weight:600;font-size:.68rem;white-space:nowrap}
+.empty{text-align:center;padding:24px;color:var(--t2);font-size:.8rem}
+.toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%) translateY(10px);background:#1f2937;color:#fff;padding:10px 20px;border-radius:8px;font-size:.8rem;opacity:0;transition:all .3s;z-index:200;white-space:nowrap}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.succ{background:var(--succ)}.toast.err{background:var(--danger)}
+.set-row{display:flex;align-items:center;gap:10px;padding:8px 0}
+.set-row label{font-size:.8rem;flex:1}
+.set-row input{width:70px;padding:8px;border:1.5px solid var(--bd);border-radius:8px;font-size:.85rem;text-align:center}
+.set-row select{padding:8px;border:1.5px solid var(--bd);border-radius:8px;font-size:.85rem}
+.streak{font-size:2rem;font-weight:700;color:#f59e0b;text-align:center;padding:8px}
+.streak-label{font-size:.7rem;color:var(--t2);text-align:center}
+.note-area{width:100%;min-height:40px;padding:10px;border:1.5px solid var(--bd);border-radius:8px;font-size:.85rem;font-family:inherit;outline:none;resize:vertical;margin-top:6px}
+.note-area:focus{border-color:var(--pri)}
+details summary{font-size:.8rem;cursor:pointer}
+/* 标签体系 */
+.tag-input-wrap{display:flex;flex-wrap:wrap;gap:4px;padding:6px 8px;border:1.5px solid var(--bd);border-radius:8px;min-height:38px;align-items:center;background:#fff}
+.tag-input-wrap:focus-within{border-color:var(--pri)}
+.tag-chip{display:inline-flex;align-items:center;gap:2px;padding:3px 8px;background:#ede9fe;color:#6d28d9;border-radius:20px;font-size:.7rem;font-weight:500}
+.tag-chip .tag-x{cursor:pointer;margin-left:2px;font-size:.85rem;line-height:1;opacity:.6}
+.tag-chip .tag-x:hover{opacity:1}
+.tag-input{border:none;outline:none;font-size:.8rem;flex:1;min-width:60px;background:transparent;padding:2px 4px}
+.tag-suggest{font-size:.68rem;color:var(--t2);margin-top:2px}
+/* 计时器 */
+.timer-bar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:linear-gradient(135deg,#f0fdf4,#ecfdf5);border-radius:var(--r);margin-bottom:12px;border:1px solid #a7f3d0}
+.timer-bar .timer-clock{font-size:1.3rem;font-weight:700;font-variant-numeric:tabular-nums;color:#065f46;min-width:52px}
+.timer-bar .timer-label{font-size:.7rem;color:#6b7280}
+.timer-bar .btn-timer{padding:6px 14px;font-size:.75rem}
+/* 趋势图 */
+.trend-section{margin-bottom:18px}
+.trend-section h3{font-size:.8rem;font-weight:600;margin-bottom:6px;color:var(--t2)}
+.trend-chart{background:#fafbfc;border-radius:8px;padding:12px;overflow-x:auto}
+.trend-chart canvas{width:100%;max-height:180px}
+.trend-legend{display:flex;gap:12px;font-size:.7rem;margin-top:6px}
+.trend-legend span{display:flex;align-items:center;gap:4px}
+.trend-legend .dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+/* 诊断报告 */
+.diag-card{background:linear-gradient(135deg,#fefce8,#fffbeb);border:1px solid #fde68a;border-radius:var(--r);padding:14px;margin-bottom:12px}
+.diag-card .diag-title{font-size:.85rem;font-weight:700;color:#92400e;margin-bottom:6px}
+.diag-card .diag-list{list-style:none;font-size:.75rem;color:#78350f;line-height:1.7}
+.diag-card .diag-list li{padding:3px 0;padding-left:16px;position:relative}
+.diag-card .diag-list li::before{content:'•';position:absolute;left:2px;color:#f59e0b}
+.diag-stats{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.diag-stat{background:#fff;border-radius:8px;padding:8px 12px;font-size:.7rem;box-shadow:var(--sh);min-width:80px;text-align:center}
+.diag-stat .dv{font-size:1.1rem;font-weight:700;color:var(--pri)}
+.diag-stat .dl{color:var(--t2)}
+/* 专项突破 */
+.bt-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+.bt-form .fg{min-width:100px}
+.bt-results{margin-top:12px}
+.bt-res-list{list-style:none}
+.bt-ri{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--bd);border-radius:8px;margin-bottom:6px;font-size:.82rem;background:#fff;cursor:pointer;transition:background .15s}
+.bt-ri:hover{background:#f5f3ff}
+.bt-ri .bt-qn{font-weight:700;color:var(--pri);min-width:50px}
+.bt-ri .bt-ch{font-size:.7rem;color:var(--t2);margin-left:auto}
+.bt-ri.sel{border-color:var(--pri);background:#f5f3ff}
+.bt-empty{text-align:center;padding:20px;color:var(--t2);font-size:.8rem}
+/* 学习曲线预测 */
+.pred-card{background:linear-gradient(135deg,#eff6ff,#f0f9ff);border:1px solid #bfdbfe;border-radius:var(--r);padding:14px;margin-bottom:12px}
+.pred-card .pred-title{font-size:.85rem;font-weight:700;color:#1e40af;margin-bottom:10px}
+.pred-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.pred-big{background:#fff;border-radius:8px;padding:10px 14px;text-align:center;box-shadow:var(--sh);min-width:90px;flex:1}
+.pred-big .pb-val{font-size:1.4rem;font-weight:700}
+.pred-big .pb-val.accent{color:#2563eb}
+.pred-big .pb-val.warn{color:#f59e0b}
+.pred-big .pb-val.success{color:#10b981}
+.pred-big .pb-label{font-size:.65rem;color:var(--t2);margin-top:2px}
+.pred-trend{display:inline-block;padding:2px 10px;border-radius:20px;font-size:.7rem;font-weight:600}
+.pred-trend.up{background:#d1fae5;color:#065f46}
+.pred-trend.down{background:#fef3c7;color:#92400e}
+.pred-trend.steady{background:#dbeafe;color:#1e40af}
+.pred-suggestion{font-size:.72rem;color:#1e40af;margin-top:6px;line-height:1.6}
+.pred-chapters{font-size:.72rem;margin-top:8px}
+.pred-chapters h4{font-size:.75rem;font-weight:600;color:var(--t2);margin-bottom:4px}
+.pred-ch{display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #f3f4f6}
+.pred-ch .pch-name{width:70px;font-weight:500}
+.pred-ch .pch-bar{flex:1;background:var(--bd);border-radius:3px;height:8px;overflow:hidden}
+.pred-ch .pch-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#6366f1,#818cf8)}
+.pred-ch .pch-date{font-size:.65rem;color:var(--t2);min-width:55px;text-align:right}
+/* 深度智能分析 */
+.da-card{background:#fff;border-radius:10px;padding:14px;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,.06);border:1px solid #e5e7eb}
+.da-card .da-title{font-size:.82rem;font-weight:700;color:var(--t1);margin-bottom:2px}
+.da-card .da-subtitle{font-size:.65rem;color:#9ca3af;margin-bottom:10px}
+.da-row{display:flex;gap:12px}
+.da-col-left{flex:1.2;min-width:0}
+.da-col-right{flex:1;min-width:0;font-size:.7rem}
+.da-stat-row{display:flex;align-items:center;gap:6px;font-size:.72rem;flex-wrap:wrap}
+.dsr-label{color:var(--t2)}.dsr-val{font-weight:700;color:#2563eb}
+.da-intervals{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;font-size:.65rem}
+.da-intervals .intv{background:#f3f4f6;border-radius:6px;padding:3px 8px;text-align:center}
+.da-intervals .intv .iv{font-weight:700;color:var(--t1)}
+.da-intervals .intv .il{color:var(--t2)}
+.cross-findings{font-size:.72rem;color:#92400e;line-height:1.6;margin-bottom:8px}
+.cross-findings .cf-item{padding:4px 8px;background:#fffbeb;border-radius:6px;margin-bottom:4px}
+.cross-table-wrap{overflow-x:auto;margin-top:4px}
+.cross-table{width:100%;border-collapse:collapse;font-size:.7rem}
+.cross-table th{text-align:left;padding:5px 8px;background:#f9fafb;color:var(--t2);font-weight:600;border-bottom:1px solid var(--bd);white-space:nowrap}
+.cross-table td{padding:5px 8px;border-bottom:1px solid #f3f4f6;white-space:nowrap}
+.cross-table .badge{display:inline-block;padding:1px 6px;border-radius:10px;font-size:.6rem;font-weight:600}
+.cross-table .badge.critical{background:#fee2e2;color:#991b1b}
+.cross-table .badge.warning{background:#fef3c7;color:#92400e}
+.cross-table .badge.ok{background:#d1fae5;color:#065f46}
+.fc-list{list-style:none;font-size:.65rem;max-height:120px;overflow-y:auto}
+.fc-list li{padding:3px 0;border-bottom:1px solid #f3f4f6;display:flex;justify-content:space-between;flex-wrap:wrap;gap:4px}
+.fc-list li .fc-qn{font-weight:600;color:var(--pri)}
+.fc-list li .fc-ch{color:var(--t2)}
+.fc-list li .fc-days{color:#dc2626;font-weight:600}
+.fc-chbars{margin-bottom:4px}.fc-chb{display:flex;align-items:center;gap:6px;margin-bottom:2px;font-size:.65rem}
+.fc-chb .fcc-name{width:60px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fc-chb .fcc-bar{flex:1;height:6px;background:var(--bd);border-radius:3px;overflow:hidden}
+.fc-chb .fcc-fill{height:100%;border-radius:3px;background:#ef4444}
+.fc-chb .fcc-n{font-weight:600;min-width:20px}
+.fc-tags{display:flex;flex-wrap:wrap;gap:3px;font-size:.6rem}
+.fc-tags .fct{background:#fef2f2;color:#991b1b;padding:1px 6px;border-radius:10px}
+.eff-grid{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.eff-big{flex:1;min-width:80px;background:#f0f9ff;border-radius:8px;padding:10px;text-align:center}
+.eff-big .eff-val{font-size:1.2rem;font-weight:700;color:#0c4a6e}
+.eff-big .eff-val.green{color:#065f46}.eff-big .eff-val.red{color:#991b1b}.eff-big .eff-val.amber{color:#92400e}
+.eff-big .eff-label{font-size:.6rem;color:#64748b;margin-top:2px}
+.eff-compare{background:#f9fafb;border-radius:8px;padding:8px 12px;margin-bottom:8px}
+.eff-comp-row{display:flex;justify-content:space-between;font-size:.7rem;padding:2px 0}
+.eff-comp-row span:first-child{color:var(--t2)}.eff-comp-row span:last-child{font-weight:600}
+.eff-periods{font-size:.68rem}
+.eff-periods .ep-row{display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #f3f4f6}
+.eff-periods .ep-name{width:32px;font-weight:600}
+.eff-periods .ep-bar-bg{flex:1;height:6px;background:var(--bd);border-radius:3px;overflow:hidden}
+.eff-periods .ep-bar-fill{height:100%;border-radius:3px;transition:width .4s}
+.eff-periods .ep-acc{min-width:36px;text-align:right;font-weight:600}
+.plan-days{display:flex;flex-wrap:wrap;gap:8px}
+.plan-day{flex:1;min-width:100px;background:#f0f9ff;border-radius:8px;padding:10px;text-align:center;border:1px solid #e0f2fe}
+.plan-day.weak{border-color:#fca5a5;background:#fff5f5}
+.plan-day.review{border-color:#bbf7d0;background:#f0fdf4}
+.plan-day.rest{border-color:#e5e7eb;background:#f9fafb;opacity:.7}
+.plan-day .pd-day{font-size:.7rem;font-weight:700;color:var(--t1);margin-bottom:2px}
+.plan-day .pd-ch{font-size:.68rem;color:#2563eb;font-weight:600;margin-bottom:2px}
+.plan-day .pd-count{font-size:.6rem;color:var(--t2);margin-bottom:2px}
+.plan-day .pd-focus{font-size:.58rem;padding:1px 6px;border-radius:8px;display:inline-block;margin-bottom:2px}
+.plan-day .pd-tips{font-size:.55rem;color:#9ca3af;margin-top:2px}
+.plan-day.weak .pd-focus{background:#fee2e2;color:#991b1b}
+.plan-day.review .pd-focus{background:#d1fae5;color:#065f46}
+/* 错误聚类 */
+.cluster-alerts{margin-bottom:10px}
+.cluster-alert{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;border-radius:8px;margin-bottom:6px;font-size:.7rem}
+.cluster-alert.critical{background:#fef2f2;border:1px solid #fecaca}
+.cluster-alert.warning{background:#fffbeb;border:1px solid #fde68a}
+.cluster-alert .ca-icon{font-size:1rem;flex-shrink:0}
+.cluster-alert .ca-body{flex:1;line-height:1.5}
+.cluster-alert .ca-msg{font-weight:600;margin-bottom:1px}
+.cluster-alert .ca-meta{color:var(--t2);font-size:.62rem}
+/* 周报 */
+.report-header{display:flex;align-items:center;gap:12px;margin-bottom:10px;flex-wrap:wrap}
+.report-grade{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.4rem;font-weight:800;color:#fff;flex-shrink:0}
+.report-grade.S{background:linear-gradient(135deg,#6366f1,#8b5cf6)}
+.report-grade.A{background:linear-gradient(135deg,#10b981,#34d399)}
+.report-grade.B{background:linear-gradient(135deg,#f59e0b,#fbbf24)}
+.report-grade.C{background:linear-gradient(135deg,#ef4444,#f87171)}
+.report-summary{flex:1;font-size:.72rem;line-height:1.6}
+.report-summary .rs-score{font-size:1rem;font-weight:700;color:var(--pri)}
+.report-stats{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}
+.report-stats .rs-item{background:#f9fafb;border-radius:6px;padding:6px 10px;text-align:center;min-width:60px;flex:1}
+.report-stats .rs-val{font-size:.85rem;font-weight:700;color:var(--t1)}
+.report-stats .rs-val.up{color:#10b981}.report-stats .rs-val.down{color:#ef4444}
+.report-stats .rs-label{font-size:.58rem;color:var(--t2)}
+.report-worst{font-size:.68rem;margin-top:6px}
+.report-worst span{display:inline-block;background:#fef2f2;color:#991b1b;padding:2px 8px;border-radius:10px;margin:2px 3px 2px 0;font-size:.6rem}
+/* 目标倒推 */
+.goal-urgent{text-align:center;padding:12px;border-radius:10px;margin-bottom:10px}
+.goal-urgent.critical{background:#fef2f2;border:1px solid #fca5a5}
+.goal-urgent.tight{background:#fffbeb;border:1px solid #fcd34d}
+.goal-urgent.normal{background:#f0fdf4;border:1px solid #86efac}
+.goal-urgent.relaxed{background:#f0f9ff;border:1px solid #93c5fd}
+.goal-urgent .gu-big{font-size:1.5rem;font-weight:800}
+.goal-urgent .gu-big.crit{color:#dc2626}.goal-urgent .gu-big.tight{color:#d97706}.goal-urgent .gu-big.normal{color:#059669}.goal-urgent .gu-big.relaxed{color:#2563eb}
+.goal-urgent .gu-msg{font-size:.72rem;font-weight:600;margin:4px 0;color:var(--t1)}
+.goal-urgent .gu-sub{font-size:.62rem;color:var(--t2)}
+.goal-milestones{display:flex;gap:6px;margin-top:8px;font-size:.62rem}
+.goal-milestones .gm-item{flex:1;text-align:center;padding:6px;background:#f3f4f6;border-radius:6px}
+.goal-milestones .gm-date{font-weight:600;color:var(--pri)}
+.goal-milestones .gm-pct{color:var(--t2)}
+.goal-chapters{font-size:.68rem;margin-top:6px}
+.goal-chapters .gc-row{display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid #f3f4f6}
+.goal-chapters .gc-name{width:65px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+.goal-chapters .gc-remain{min-width:30px;color:var(--t2)}
+.goal-chapters .gc-bar{flex:1;height:5px;background:var(--bd);border-radius:3px;overflow:hidden}
+.goal-chapters .gc-fill{height:100%;border-radius:3px}
+.goal-chapters .gc-daily{min-width:35px;text-align:right;font-weight:600;color:var(--pri)}
+@media(min-width:641px){
+.bottom-nav{display:none}body{padding-bottom:0}
+.container{max-width:1100px;padding:20px}
+header{padding:24px 0;margin-bottom:24px}header h1{font-size:1.8rem}header p{font-size:.9rem}
+.stats-row{gap:16px;margin-bottom:16px;flex-wrap:wrap}.st{padding:16px;min-width:120px}
+.st .n{font-size:1.8rem}.st .l{font-size:.8rem}
+.tabs{margin-bottom:20px}.tab{padding:10px 18px;font-size:.9rem}
+.card{padding:20px;margin-bottom:20px}.card h2{font-size:1.15rem;margin-bottom:14px}
+.btn{padding:10px 18px;font-size:.9rem}
+.ocr-rw,.tw{overflow-x:visible;margin:0;padding:0}.ocr-tb{min-width:auto}
+.toast{bottom:24px;left:auto;right:24px;transform:translateY(10px)}.toast.show{transform:translateY(0)}
+}
+@media(max-width:640px){.tabs{display:none}}
+</style>
+</head>
+<body>
+<header><h1>错题管理智能体</h1><p>错因分析 · 热力图 · 每日提醒 · 离线可用</p></header>
+<div class="container">
+<div class="stats-row">
+<div class="st"><div class="n" id="stRemain">--</div><div class="l">待攻克</div></div>
+<div class="st m"><div class="n" id="stMastered">--</div><div class="l">已掌握</div></div>
+<div class="st a"><div class="n" id="stToday">--</div><div class="l">今日练习</div></div>
+</div>
+<div class="tabs" id="desktopTabs">
+<button class="tab active" data-tab="add">+ 添加</button>
+<button class="tab" data-tab="practice">练习</button>
+<button class="tab" data-tab="targeted">专项突破</button>
+<button class="tab" data-tab="bank">题库</button>
+<button class="tab" data-tab="stats">统计</button>
+<button class="tab" data-tab="settings">设置</button>
+</div>
+
+<!-- 添加 -->
+<div class="card" id="tab-add">
+<h2>添加错题</h2>
+<div class="form-row" style="margin-bottom:10px">
+<div class="fg"><label>题号 *</label><input type="text" id="singleQn" placeholder="如：P45-T3"></div>
+<div class="fg"><label>章节 *</label><select id="singleCh" style="flex:1"><option value="">选择章节...</option><option value="U1">U1</option><option value="U2">U2</option><option value="U3">U3</option><option value="U4">U4</option><option value="U5">U5</option><option value="U6">U6</option><option value="U7">U7</option><option value="U8">U8</option><option value="U9">U9</option><option value="U10">U10</option><option value="U11">U11</option><option value="U12">U12</option><option value="U13">U13</option><option value="U14">U14</option><option value="U15">U15</option><option value="U16">U16</option><option value="U17">U17</option><option value="U18">U18</option></select></div>
+<div class="fg"><label>小节</label><select id="singleSec" style="flex:1"><option value="">选择小节...</option><option value="1000A">1000A</option><option value="1000B">1000B</option><option value="660">660</option><option value="880基础">880基础</option><option value="880强化">880强化</option><option value="课后题">课后题</option><option value="30讲义例题">30讲义例题</option><option value="18讲义例题">18讲义例题</option><option value="真题">真题</option><option value="模拟卷">模拟卷</option></select></div>
+<div class="fg"><label>来源</label><input type="text" id="singleSrc" placeholder="如：模拟卷A"></div>
+<div class="fg"><label>错因</label><select id="singleEtype"><option value="">--</option><option value="careless">粗心失误</option><option value="concept">概念不清</option><option value="calculation">计算错误</option><option value="method">方法不会</option></select></div>
+<div class="fg"><label>难度</label><select id="singleDifficulty"><option value="">--</option><option value="easy">基础</option><option value="medium">中等</option><option value="hard">难题</option></select></div>
+<div class="fg"><label>题型</label><select id="singleQtype"><option value="">--</option><option value="choice">选择题</option><option value="fill">填空题</option><option value="calc">计算题</option><option value="proof">证明题</option><option value="short">简答题</option></select></div>
+<button class="btn btn-p" onclick="addSingle()">添加</button>
+</div>
+<div class="fg" style="width:100%;margin-top:6px"><label>知识点标签（输入后回车添加）</label><div class="tag-input-wrap" id="tagInputWrap"><input type="text" class="tag-input" id="tagInput" placeholder="如：高频,极限,导数" onkeydown="handleTagKey(event)"><div class="tag-suggest" id="tagSuggest"></div></div></div>
+<div class="fg" style="width:100%;margin-top:6px">
+<label>题目图片</label>
+<div class="ocr-section" style="padding:14px" id="imgDropZone" onclick="document.getElementById('imgFileInput').click()">
+<span class="ui" style="font-size:1.6rem">&#128247;</span><span class="ut">点击拍照或上传图片</span><span class="uh">手机端调用相机 · 自动压缩</span>
+<input type="file" id="imgFileInput" accept="image/*" capture="environment" style="display:none" onchange="handleImgUpload(this.files[0])">
+</div>
+<div id="imgPreview" style="display:none;margin-top:8px"><div class="ocr-preview"><img id="imgPreviewImg" style="max-height:180px"><button class="rm" onclick="clearImgUpload()">&times;</button></div><p style="font-size:.7rem;color:var(--t2);margin-top:4px;text-align:center" id="imgSizeInfo"></p></div>
+</div>
+<div class="fg" style="width:100%;margin-top:6px"><label>备注</label><textarea class="note-area" id="singleNote" placeholder="解题思路、易错点..."></textarea></div>
+<details style="margin-top:10px"><summary>批量文本导入</summary>
+<textarea class="batch-area" id="batchInput" placeholder="每行：题号,章节,小节,来源&#10;P12-T5,U1 单元,1.3,讲义例题&#10;P45-T3,U3 单元,3.2,课后例题"></textarea>
+<button class="btn btn-o btn-sm" onclick="addBatch()" style="margin-top:6px">批量导入</button></details>
+<details open style="margin-top:10px"><summary style="font-weight:600">拍照识别 (OCR)</summary>
+<div style="margin-top:8px">
+<div class="ocr-section" id="ocrDropZone" onclick="document.getElementById('ocrFileInput').click()">
+<span class="ui">&#128248;</span><span class="ut">点击拍照或选择截图</span><span class="uh">手机端调用相机 · JPG/PNG</span>
+<input type="file" id="ocrFileInput" accept="image/*" capture="environment" onchange="handleOcrFile(this.files[0])">
+</div>
+<div id="ocrPreviewArea" style="display:none;text-align:center"></div>
+<div class="ocr-prog" id="ocrProgressBar" style="display:none"><div class="bar" id="ocrProgressFill"></div></div>
+<div class="ocr-st" id="ocrStatus"></div>
+<div id="ocrResultArea" style="display:none">
+<p style="font-weight:600;margin-bottom:4px;font-size:.8rem">识别结果（可修改）：</p>
+<div class="ocr-rw"><table class="ocr-tb"><thead><tr><th>#</th><th>题号*</th><th>章节*</th><th>小节</th><th>来源</th><th></th></tr></thead><tbody id="ocrResultBody"></tbody></table></div>
+<div class="ocr-a"><button class="btn btn-o btn-sm" onclick="resetOcr()">重拍</button><button class="btn btn-s" onclick="importOcrResults()">确认导入</button></div>
+</div></div></details>
+</div>
+
+<!-- 练习 -->
+<div class="card" id="tab-practice" style="display:none">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+<h2 style="margin:0">今日练习（<span id="practiceDate">---</span>）</h2>
+<button class="btn btn-o btn-sm" onclick="refreshPractice()">重新抽题</button>
+<button class="btn btn-o btn-sm" id="btnPrevPractice" onclick="togglePrevPractice()" style="display:none">📋 查看上次练习</button>
+</div>
+<div class="timer-bar" id="timerBar">
+<span class="timer-clock" id="timerClock">00:00</span>
+<span class="timer-label">本次练习时长</span>
+<button class="btn btn-s btn-timer" id="btnTimer" onclick="toggleTimer()">开始计时</button>
+<button class="btn btn-o btn-timer" onclick="endSession()" style="display:none" id="btnEndSession">结束练习</button>
+</div>
+<div class="pr-prog"><div class="bar" id="practiceBar" style="width:0%"></div></div>
+<div class="pr-sum" id="practiceSummary" style="display:none">
+<span><span class="dot" style="background:var(--succ)"></span>正确：<strong id="prCorrect">0</strong></span>
+<span><span class="dot" style="background:var(--danger)"></span>错误：<strong id="prWrong">0</strong></span>
+<span>剩余：<strong id="prRemain">0</strong></span>
+</div>
+<ul class="pl" id="practiceList"></ul>
+<!-- 查看历史练习 -->
+<div id="prevPractice" style="display:none;margin-top:12px;padding-top:12px;border-top:2px dashed #e5e7eb">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+<h3 style="font-size:.85rem;margin:0;color:var(--t1)">📋 <span id="prevDateLabel">上次练习</span></h3>
+<div style="display:flex;gap:6px;align-items:center">
+<select id="prevDateSel" onchange="loadPrevDate()" style="padding:4px 6px;border:1.5px solid var(--bd);border-radius:6px;font-size:.7rem"></select>
+<button class="btn btn-o btn-xs" onclick="togglePrevPractice()">收起</button>
+</div>
+</div>
+<div class="pr-prog"><div class="bar" id="prevProgress" style="width:0%"></div></div>
+<div class="pr-sum" id="prevSummary" style="display:none">
+<span><span class="dot" style="background:var(--succ)"></span>正确：<strong id="prevCorrect">0</strong></span>
+<span><span class="dot" style="background:var(--danger)"></span>错误：<strong id="prevWrong">0</strong></span>
+<span>剩余：<strong id="prevRemain">0</strong></span>
+</div>
+<ul class="pl" id="prevPracticeList"></ul>
+</div>
+</div>
+
+<!-- 专项突破 -->
+<div class="card" id="tab-targeted" style="display:none">
+<h2>专项突破</h2>
+<div class="bt-form">
+<div class="fg"><label>章节</label><select id="btChapter"><option value="">全部</option></select></div>
+<div class="fg"><label>错因类型</label><select id="btEtype"><option value="">全部</option><option value="careless">粗心失误</option><option value="concept">概念不清</option><option value="calculation">计算错误</option><option value="method">方法不会</option></select></div>
+<div class="fg"><label>知识点标签</label><select id="btTag"><option value="">全部</option></select></div>
+<div class="fg"><label>难度</label><select id="btDifficulty"><option value="">全部</option><option value="easy">基础</option><option value="medium">中等</option><option value="hard">难题</option></select></div>
+<div class="fg"><label>题型</label><select id="btQtype"><option value="">全部</option><option value="choice">选择题</option><option value="fill">填空题</option><option value="calc">计算题</option><option value="proof">证明题</option><option value="short">简答题</option></select></div>
+<div class="fg"><label>题数</label><input type="number" id="btCount" min="5" max="50" value="15" style="width:60px"></div>
+<button class="btn btn-p" onclick="loadTargetedPractice()">开始突破</button>
+</div>
+<p style="font-size:.7rem;color:var(--t2);margin-top:6px" id="btAvailable"></p>
+<div class="bt-results" id="btResults" style="display:none">
+<h3 style="font-size:.85rem;margin-bottom:8px">突破题目（<span id="btDoneCount">0</span>/<span id="btTotalCount">0</span>）</h3>
+<div class="pr-prog"><div class="bar" id="btBar" style="width:0%"></div></div>
+<ul class="bt-res-list" id="btList"></ul>
+</div>
+</div>
+
+<!-- 题库 -->
+<div class="card" id="tab-bank" style="display:none">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+<h2 style="margin:0">错题库</h2>
+<div style="display:flex;gap:4px;align-items:center">
+<select id="filterChapter" onchange="loadBank()" style="padding:6px 8px;border:1.5px solid var(--bd);border-radius:8px;font-size:.75rem;max-width:120px"><option value="">全部</option></select>
+<button class="btn btn-d btn-sm" onclick="deleteSelected()">删除选中</button>
+</div>
+</div>
+<input type="text" class="search-box" id="searchBox" placeholder="搜索题号/章节/小节..." oninput="debounceSearch()">
+<div class="tw"><table><thead><tr><th style="width:36px">选</th><th>题号</th><th>章节</th><th>小节</th><th>标签</th><th>错因</th><th>错误</th><th>状态</th><th>日期</th></tr></thead><tbody id="bankTbody"></tbody></table></div>
+<div style="margin-top:8px;text-align:right"><button class="btn btn-o btn-sm" onclick="exportCSV()">导出 CSV</button></div>
+</div>
+
+<!-- 统计 -->
+<div class="card" id="tab-stats" style="display:none">
+<h2>学习分析</h2>
+<!-- 诊断报告 -->
+<div class="diag-card" id="diagCard">
+<div class="diag-title">&#128269; 智能诊断报告</div>
+<ul class="diag-list" id="diagList"><li>加载中...</li></ul>
+<div class="diag-stats" id="diagStats"></div>
+</div>
+<!-- 学习曲线预测 -->
+<div class="pred-card" id="predCard">
+<div class="pred-title">&#128200; 学习曲线预测</div>
+<div class="pred-row" id="predRow"></div>
+<div class="pred-suggestion" id="predSuggestion"></div>
+<div class="pred-chapters" id="predChapters" style="display:none">
+<h4>各章节预计攻克时间</h4>
+<div id="predChList"></div>
+</div>
+</div>
+<!-- 趋势图 -->
+<div class="trend-section">
+<h3>每日正确率趋势</h3>
+<div class="trend-chart"><canvas id="trendCanvas" height="150"></canvas></div>
+<div class="trend-legend">
+<span><span class="dot" style="background:#10b981"></span>正确</span>
+<span><span class="dot" style="background:#ef4444"></span>错误</span>
+<span><span class="dot" style="background:#6366f1;border-radius:0;width:14px;height:2px"></span>正确率%</span>
+</div>
+</div>
+<div class="trend-section">
+<h3>掌握进度趋势</h3>
+<div class="trend-chart"><canvas id="masteryCanvas" height="120"></canvas></div>
+</div>
+<div class="trend-section">
+<h3>每日学习时长（分钟）</h3>
+<div class="trend-chart"><canvas id="durationCanvas" height="100"></canvas></div>
+</div>
+<div class="stat-section"><h3>错因分布</h3><div class="etype-bars" id="etypeDist"></div></div>
+<div class="stat-section">
+<h3>章节弱项热力图</h3>
+<div class="hm-legend">
+<span><span class="swatch" style="background:#10b981"></span>≥70%</span>
+<span><span class="swatch" style="background:#f59e0b"></span>40-70%</span>
+<span><span class="swatch" style="background:#ef4444"></span>&lt;40%</span>
+</div>
+<div class="heatmap-grid" id="heatmapGrid"></div>
+</div>
+
+<!-- ═══ 深度智能分析 ═══ -->
+<div class="deep-section" id="deepAnalysis" style="display:none">
+<h3 style="font-size:.95rem;font-weight:700;color:#1e40af;margin-bottom:12px;padding-bottom:8px;border-bottom:2px solid #bfdbfe">🔬 深度智能分析</h3>
+
+<!-- 模块1：交叉诊断 -->
+<div class="da-card cross-card" id="crossCard">
+<div class="da-title">🎯 错误模式交叉诊断</div>
+<div class="da-subtitle">章节 × 错因 × 难度三维定位，精确找到最致命弱点</div>
+<div class="cross-findings" id="crossFindings"></div>
+<div class="cross-table-wrap"><table class="cross-table"><thead><tr><th>章节</th><th>难度</th><th>错因</th><th>题数</th><th>掌握率</th><th>严重度</th></tr></thead><tbody id="crossTbody"></tbody></table></div>
+</div>
+
+<!-- 模块2：遗忘曲线 -->
+<div class="da-card forget-card">
+<div class="da-title">🧠 遗忘曲线与回生预警</div>
+<div class="da-subtitle">追踪已掌握知识点的保持情况，发现最易遗忘的知识</div>
+<div class="da-row">
+<div class="da-col-left">
+<div class="da-stat-row"><span class="dsr-label">已掌握后回生</span><span class="dsr-val" id="fcRegressed">--</span><span class="dsr-label">回生率</span><span class="dsr-val" id="fcRate">--</span></div>
+<div class="trend-chart" style="margin-top:8px"><canvas id="forgetCanvas" height="120"></canvas></div>
+<div class="da-intervals" id="fcIntervals"></div>
+</div>
+<div class="da-col-right">
+<h4 style="font-size:.75rem;font-weight:600;color:var(--t2);margin-bottom:4px">最易遗忘章节</h4>
+<div id="fcChapters"></div>
+<h4 style="font-size:.75rem;font-weight:600;color:var(--t2);margin:8px 0 4px">最易遗忘知识点</h4>
+<div id="fcTags"></div>
+<h4 style="font-size:.75rem;font-weight:600;color:var(--t2);margin:8px 0 4px">近期回生题目</h4>
+<ul class="fc-list" id="fcList"></ul>
+</div>
+</div>
+</div>
+
+<!-- 模块3：效率画像 -->
+<div class="da-card eff-card">
+<div class="da-title">⚡ 学习效率画像</div>
+<div class="da-subtitle">分析你的刷题节奏、速度与最佳学习时段</div>
+<div class="eff-grid" id="effGrid">
+<div class="eff-big"><div class="eff-val" id="effTotalMin">--</div><div class="eff-label">累计学习(分钟)</div></div>
+<div class="eff-big"><div class="eff-val" id="effAvgQ">--</div><div class="eff-label">日均做题量</div></div>
+<div class="eff-big"><div class="eff-val" id="effTrend">--</div><div class="eff-label">效率趋势</div></div>
+<div class="eff-big"><div class="eff-val" id="effBest">--</div><div class="eff-label">最佳时段</div></div>
+</div>
+<div class="eff-compare" id="effCompare" style="display:none">
+<h4 style="font-size:.75rem;font-weight:600;color:var(--t2);margin-bottom:6px">效率对比（前期 vs 近期）</h4>
+<div class="eff-comp-row"><span>正确率</span><span id="effAccCmp">--</span></div>
+<div class="eff-comp-row"><span>速度</span><span id="effSpeedCmp">--</span></div>
+</div>
+<div class="eff-periods" id="effPeriods">
+<h4 style="font-size:.75rem;font-weight:600;color:var(--t2);margin-bottom:4px">各时段表现</h4>
+</div>
+</div>
+
+<!-- 模块4：周计划 -->
+<div class="da-card plan-card">
+<div class="da-title">📅 个性化七天行动计划</div>
+<div class="da-subtitle" id="planTarget">--</div>
+<div class="plan-days" id="planDays"></div>
+<div style="font-size:.65rem;color:var(--t2);margin-top:6px">* 计划基于当前薄弱点自动生成，每日建议题数可在设置中调整</div>
+</div>
+
+<!-- 模块5：错误模式聚类 -->
+<div class="da-card cluster-card" id="clusterCard">
+<div class="da-title">🔗 错误模式聚类告警</div>
+<div class="da-subtitle" id="clusterSubtitle">近7天错误智能聚类，发现重复出错模式</div>
+<div class="cluster-alerts" id="clusterAlerts"></div>
+</div>
+
+<!-- 模块6：周报 -->
+<div class="da-card report-card" id="reportCard">
+<div class="da-title">📊 学习周报</div>
+<div class="report-header">
+<div class="report-grade" id="reportGrade">--</div>
+<div class="report-summary" id="reportSummary"></div>
+</div>
+<div class="report-stats" id="reportStats"></div>
+<div class="report-worst" id="reportWorst"></div>
+</div>
+
+<!-- 模块7：目标倒推计划 -->
+<div class="da-card goal-card" id="goalCard">
+<div class="da-title">🎯 目标倒推计划</div>
+<div class="goal-urgent" id="goalUrgent"></div>
+<div class="goal-milestones" id="goalMilestones"></div>
+<div class="goal-chapters" id="goalChapters"></div>
+</div>
+</div>
+</div>
+
+<!-- 设置 -->
+<div class="card" id="tab-settings" style="display:none">
+<h2>设置</h2>
+<div class="set-row"><label>每日练习题目数</label><input type="number" id="setDailyCount" min="5" max="50" value="15"><button class="btn btn-p btn-sm" onclick="saveSettings()">保存</button></div>
+<div class="set-row"><label>考试日期</label><input type="date" id="setExamDate"><button class="btn btn-p btn-sm" onclick="saveSettings()">保存</button></div>
+<h3 style="font-size:.85rem;font-weight:600;margin:16px 0 8px">每日提醒</h3>
+<div class="set-row"><label>提醒时间</label><input type="time" id="setRemindTime" value="20:00"><button class="btn btn-p btn-sm" onclick="enableReminder()">开启提醒</button></div>
+<p style="font-size:.7rem;color:var(--t2)" id="reminderStatus"></p>
+<div class="streak" id="streakNum">0</div>
+<div class="streak-label">连续打卡天数</div>
+<p style="font-size:.7rem;color:var(--t2);margin-top:12px">掌握判定：做对一次即标记"已掌握"</p>
+<div style="margin-top:12px"><button class="btn btn-o btn-sm" onclick="resetAllMastered()">重置所有掌握状态</button></div>
+<div style="margin-top:12px;border-top:1px solid var(--bd);padding-top:8px">
+<p style="font-size:.7rem;color:var(--t2)">数据备份</p>
+<button class="btn btn-o btn-sm" onclick="importData()" style="margin:4px 4px 0 0">导入备份</button>
+<button class="btn btn-o btn-sm" onclick="exportData()" style="margin:4px 0 0 0">导出备份</button>
+</div>
+<div style="margin-top:12px;border-top:1px solid var(--bd);padding-top:8px">
+<p style="font-size:.7rem;color:var(--t2);margin-bottom:4px">数据同步（需先启动在线版服务器）</p>
+<div class="set-row"><label>服务器地址</label><input type="text" id="setSyncUrl" placeholder="http://127.0.0.1:5000" style="flex:1"></div>
+<div style="display:flex;gap:6px;margin-top:8px">
+<button class="btn btn-s btn-sm" onclick="syncDownload()">从服务器下载</button>
+<button class="btn btn-p btn-sm" onclick="syncUpload()">上传到服务器</button>
+</div>
+<p style="font-size:.65rem;color:var(--t2);margin-top:4px" id="syncStatus"></p>
+</div>
+</div>
+</div>
+
+<nav class="bottom-nav"><div class="bn-inner">
+<button class="bn-i active" data-tab="add"><span class="ic">+</span>添加</button>
+<button class="bn-i" data-tab="practice"><span class="ic">&#9997;</span>练习</button>
+<button class="bn-i" data-tab="targeted"><span class="ic">&#127919;</span>突破</button>
+<button class="bn-i" data-tab="bank"><span class="ic">&#9776;</span>题库</button>
+<button class="bn-i" data-tab="stats"><span class="ic">&#128200;</span>统计</button>
+<button class="bn-i" data-tab="settings"><span class="ic">&#9881;</span>设置</button>
+</div></nav>
+
+<!-- 错因选择弹窗 -->
+<div class="modal-bg" id="errorModal" style="display:none">
+<div class="modal">
+<h3>这道题为什么错了？</h3>
+<div class="etypes" id="etypeBtns">
+<button data-type="careless" onclick="closeErrorModal('careless')">粗心失误</button>
+<button data-type="concept" onclick="closeErrorModal('concept')">概念不清</button>
+<button data-type="calculation" onclick="closeErrorModal('calculation')">计算错误</button>
+<button data-type="method" onclick="closeErrorModal('method')">方法不会</button>
+</div>
+<button class="skip" onclick="closeErrorModal(null)">跳过</button>
+</div>
+</div>
+
+<div class="toast" id="toast"></div>
+<input type="file" id="importFileInput" accept=".json" style="display:none" onchange="handleImport(event)">
+
+<script>
+// ═══════════════════════════════════════════════
+// 工具函数
+// ═══════════════════════════════════════════════
+const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
+let tt,ocrItems=[],ocrW=null,st=null,pendingMarkQid=null;
+const ETYPES={careless:'粗心失误',concept:'概念不清',calculation:'计算错误',method:'方法不会'};
+const ECLASS={careless:'badge-careless',concept:'badge-concept',calculation:'badge-calculation',method:'badge-method'};
+const DB_NAME='WrongQuestionSystem',DB_VERSION=1;
+let db=null;
+
+function toast(m,c=''){const t=$('#toast');t.textContent=m;t.className='toast '+(c==='ok'?'succ':c==='err'?'err':'')+' show';clearTimeout(tt);tt=setTimeout(()=>t.classList.remove('show'),2000)}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function todayStr(){return new Date().toISOString().slice(0,10)}
+
+// ═══════════════════════════════════════════════
+// IndexedDB
+// ═══════════════════════════════════════════════
+function openDB(){return new Promise((resolve,reject)=>{
+const r=indexedDB.open(DB_NAME,DB_VERSION);
+r.onupgradeneeded=e=>{
+const d=e.target.result;
+if(!d.objectStoreNames.contains('wrong_questions')){
+const s=d.createObjectStore('wrong_questions',{keyPath:'id',autoIncrement:true});
+s.createIndex('chapter_idx','chapter');s.createIndex('mastered_idx','mastered');
+}
+if(!d.objectStoreNames.contains('daily_practice'))d.createObjectStore('daily_practice',{keyPath:'date'});
+if(!d.objectStoreNames.contains('practice_results')){const s=d.createObjectStore('practice_results',{keyPath:'id',autoIncrement:true});s.createIndex('qid_date',['question_id','date'])}
+if(!d.objectStoreNames.contains('settings'))d.createObjectStore('settings',{keyPath:'key'});
+};
+r.onsuccess=e=>{db=e.target.result;resolve(db)};
+r.onerror=()=>reject(r.error);
+})}
+
+function tx(store,mode='readonly'){return db.transaction(store,mode).objectStore(store)}
+function prom(rq,getres=true){return new Promise((resolve,reject)=>{rq.onsuccess=()=>resolve(getres?rq.result:null);rq.onerror=()=>reject(rq.error)})}
+// 安全的异步读写：先只读查询，再独立写事务更新（避免 IndexedDB 事务 auto-commit 导致 put 静默失败）
+async function safeGetPut(storeName,id,modifyFn){
+    const rs=tx(storeName,'readonly');const obj=await prom(rs.get(id));
+    if(!obj)return null;
+    modifyFn(obj);
+    const ws=tx(storeName,'readwrite');await prom(ws.put(obj));
+    return obj;
+}
+// 批量写入：使用 onsuccess 回调链避免 async/await 导致事务 auto-commit
+function bulkPut(storeName,items){
+    return new Promise((resolve,reject)=>{
+        const st=tx(storeName,'readwrite');
+        let idx=0;
+        function next(){
+            if(idx>=items.length){resolve();return}
+            const rq=st.put(items[idx]);idx++;
+            rq.onsuccess=next;rq.onerror=()=>reject(rq.error);
+        }
+        next();
+    });
+}
+
+// ═══════════════════════════════════════════════
+// 路由切换
+// ═══════════════════════════════════════════════
+function switchTab(name){
+['add','practice','targeted','bank','stats','settings'].forEach(t=>$('#tab-'+t).style.display='none');
+$('#tab-'+name).style.display='';
+$$('#desktopTabs .tab').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
+$$('.bn-i').forEach(b=>b.classList.toggle('active',b.dataset.tab===name));
+if(name==='practice')loadPractice();
+if(name==='targeted')loadTargetedForm();
+if(name==='bank')loadBank();
+if(name==='stats')loadStats();
+if(name==='settings')loadSettings();
+}
+$$('#desktopTabs .tab').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
+$$('.bn-i').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
+
+// ═══════════════════════════════════════════════
+// 添加
+// ═══════════════════════════════════════════════
+async function addSingle(){
+const qn=$('#singleQn').value.trim(),ch=$('#singleCh').value.trim();
+if(!qn||!ch){toast('题号和章节不能为空','err');return}
+const tags=getCurrentTags().join(',');
+const item={
+question_number:qn,chapter:ch,section:$('#singleSec').value.trim(),
+source:$('#singleSrc').value.trim(),error_type:$('#singleEtype').value,
+difficulty:$('#singleDifficulty').value,question_type:$('#singleQtype').value,
+knowledge_tags:tags,note:$('#singleNote').value.trim(),wrong_count:1,consecutive_correct:0,
+mastered:0,date_added:todayStr(),last_wrong_date:todayStr(),last_practice_date:'',
+image_data:currentImgData
+};
+// 只读查重
+const rs=tx('wrong_questions','readonly');
+const all=await prom(rs.getAll());
+const dup=all.find(q=>q.question_number===item.question_number&&q.chapter===item.chapter&&q.section===item.section);
+// 独立写事务
+const ws=tx('wrong_questions','readwrite');
+if(dup){
+dup.wrong_count++;dup.consecutive_correct=0;dup.mastered=0;dup.last_wrong_date=todayStr();
+dup.note=item.note;dup.error_type=item.error_type;
+if(currentImgData)dup.image_data=currentImgData;
+await prom(ws.put(dup));
+toast('已存在，错误次数+1','ok');
+}else{
+await prom(ws.add(item));
+toast('添加成功','ok');
+$('#singleQn').value='';$('#singleSrc').value='';$('#singleNote').value='';currentTags=[];renderTags();clearImgUpload();
+}
+refreshStats();
+}
+
+async function addBatch(){
+const t=$('#batchInput').value.trim();if(!t){toast('请输入内容','err');return}
+const items=t.split('\n').filter(l=>l.trim()).map(line=>{
+const p=line.split(',').map(s=>s.trim());
+return{question_number:p[0]||'',chapter:p[1]||'',section:p[2]||'',source:p[3]||'',error_type:'',note:'',wrong_count:1,consecutive_correct:0,mastered:0,date_added:todayStr(),last_wrong_date:todayStr(),last_practice_date:''};
+});
+// 只读查重
+const rs=tx('wrong_questions','readonly');
+const all=await prom(rs.getAll());
+let added=0,skipped=0;
+// 收集要更新和新增的题目
+const toPut=[],toAdd=[];
+for(const item of items){
+if(!item.question_number||!item.chapter){skipped++;continue}
+const dup=all.find(q=>q.question_number===item.question_number&&q.chapter===item.chapter&&q.section===item.section);
+if(dup){dup.wrong_count++;dup.consecutive_correct=0;dup.mastered=0;toPut.push(dup);skipped++;}
+else{toAdd.push(item);added++;}
+}
+if(toPut.length)await bulkPut('wrong_questions',toPut);
+if(toAdd.length){
+    for(const it of toAdd){
+        const ws=tx('wrong_questions','readwrite');
+        await prom(ws.add(it));
+    }
+}
+toast('添加 '+added+' 题，跳过 '+skipped+' 题','ok');
+$('#batchInput').value='';refreshStats();
+}
+
+// ═══════════════════════════════════════════════
+// OCR
+// ═══════════════════════════════════════════════
+document.getElementById('ocrDropZone').addEventListener('dragover',e=>{e.preventDefault();});
+document.getElementById('ocrDropZone').addEventListener('drop',e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)handleOcrFile(f);});
+function handleOcrFile(f){if(!f||!f.type.startsWith('image/')){toast('请选图片','err');return}const rd=new FileReader();rd.onload=e=>{const a=$('#ocrPreviewArea');a.style.display='block';a.innerHTML='<div class="ocr-preview"><img src="'+e.target.result+'"><button class="rm" onclick="resetOcr()">&times;</button></div>';$('#ocrDropZone').style.display='none'};rd.readAsDataURL(f);runOcr(f);}
+async function runOcr(f){
+$('#ocrProgressBar').style.display='block';$('#ocrProgressFill').style.width='0%';$('#ocrStatus').textContent='加载引擎...';$('#ocrResultArea').style.display='none';
+try{
+if(!ocrW)ocrW=await Tesseract.createWorker('chi_sim',1,{logger:m=>{if(m.status==='recognizing text'){$('#ocrProgressFill').style.width=Math.round(m.progress*100)+'%';$('#ocrStatus').textContent='识别中... '+Math.round(m.progress*100)+'%'}}});
+const{data:{text}}=await ocrW.recognize(f);$('#ocrProgressBar').style.display='none';
+ocrItems=parseOcr(text);renderOcrRes(ocrItems);
+$('#ocrStatus').textContent='识别到 '+ocrItems.length+' 条，核对后导入';
+}catch(err){$('#ocrStatus').textContent='识别失败，请检查网络或重试';toast('OCR失败（首次需联网加载引擎）','err')}
+}
+function parseOcr(tx){const ls=tx.split('\n').map(l=>l.trim()).filter(l=>l.length>1),res=[];for(const l of ls){if(l.includes(',')){const p=l.split(',').map(s=>s.trim());const it=bi(p);if(it){res.push(it);continue}}const toks=l.split(/[\s\t]{2,}/).map(t=>t.trim()).filter(t=>t.length>0);if(toks.length>=2){const it=bi(toks);if(it){res.push(it);continue}}const st2=l.split(/[\s\t]+/).filter(t=>t.length>0);if(st2.length>=2){const it=bi(st2);if(it){res.push(it);continue}}if(l.match(/^[\w\-./（）()]+$/))res.push({question_number:l,chapter:'',section:'',source:''})}return res}
+function bi(p){const qn=p[0]||'',ch=p[1]||'',sec=p[2]||'',src=p[3]||'';if(!qn)return null;let chapter=ch;if(ch&&/^\d+(\.\d+)?$/.test(ch))chapter=ch.includes('.')?ch:('第'+ch+'章');return{question_number:qn,chapter,section:sec,source:src}}
+function chOptions(val){const opts=['','U1','U2','U3','U4','U5','U6','U7','U8','U9','U10','U11','U12','U13','U14','U15','U16','U17','U18'];return opts.map(o=>'<option value="'+o+'"'+(o===val?' selected':'')+'>'+(o||'选择章节')+'</option>').join('')}
+function secOptions(val){const opts=['','1000A','1000B','660','880基础','880强化','课后题','30讲义例题','18讲义例题','真题','模拟卷'];return opts.map(o=>'<option value="'+o+'"'+(o===val?' selected':'')+'>'+(o||'选择小节')+'</option>').join('')}
+function renderOcrRes(items){const tb=$('#ocrResultBody');tb.innerHTML=items.map((it,i)=>'<tr><td>'+(i+1)+'</td><td><input type="text" value="'+esc(it.question_number)+'" data-idx="'+i+'" data-field="question_number"></td><td><select data-idx="'+i+'" data-field="chapter" style="font-size:.75rem">'+chOptions(it.chapter)+'</select></td><td><select data-idx="'+i+'" data-field="section" style="font-size:.75rem">'+secOptions(it.section)+'</select></td><td><input type="text" value="'+esc(it.source)+'" data-idx="'+i+'" data-field="source"></td><td><button class="btn btn-d btn-sm" onclick="removeOcrRow('+i+')">&times;</button></td></tr>').join('');tb.querySelectorAll('input,select').forEach(inp=>{inp.addEventListener('input',()=>{ocrItems[parseInt(inp.dataset.idx)][inp.dataset.field]=inp.value})});$('#ocrResultArea').style.display='block'}
+function removeOcrRow(i){ocrItems.splice(i,1);renderOcrRes(ocrItems)}
+function resetOcr(){ocrItems=[];$('#ocrPreviewArea').style.display='none';$('#ocrPreviewArea').innerHTML='';$('#ocrFileInput').value='';$('#ocrDropZone').style.display='';$('#ocrProgressBar').style.display='none';$('#ocrStatus').textContent='';$('#ocrResultArea').style.display='none'}
+async function importOcrResults(){const v=ocrItems.filter(it=>it.question_number.trim()&&it.chapter.trim());if(v.length===0){toast('题号和章节不能为空','err');return}const rs=tx('wrong_questions','readonly');const all=await prom(rs.getAll());let added=0,skipped=0;const toPut=[],toAdd=[];for(const it of v){const item={question_number:it.question_number.trim(),chapter:it.chapter.trim(),section:it.section.trim(),source:it.source.trim(),error_type:'',note:'',wrong_count:1,consecutive_correct:0,mastered:0,date_added:todayStr(),last_wrong_date:todayStr(),last_practice_date:''};const dup=all.find(q=>q.question_number===item.question_number&&q.chapter===item.chapter&&q.section===item.section);if(dup){dup.wrong_count++;dup.consecutive_correct=0;dup.mastered=0;toPut.push(dup);skipped++;}else{toAdd.push(item);added++;}}if(toPut.length)await bulkPut('wrong_questions',toPut);for(const it of toAdd){const ws=tx('wrong_questions','readwrite');await prom(ws.add(it))}toast('导入 '+added+' 题，跳过 '+skipped+' 题','ok');resetOcr();refreshStats()}
+
+// ═══════════════════════════════════════════════
+// 图片上传与压缩
+// ═══════════════════════════════════════════════
+let currentImgData=null;
+function handleImgUpload(f){
+    if(!f||!f.type.startsWith('image/')){toast('请选择图片','err');return}
+    const reader=new FileReader();
+    reader.onload=e=>{
+        $('#imgPreviewImg').src=e.target.result;
+        $('#imgPreview').style.display='';
+        $('#imgDropZone').style.display='none';
+        compressImage(e.target.result,f.type);
+    };
+    reader.readAsDataURL(f);
+}
+function clearImgUpload(){
+    currentImgData=null;
+    $('#imgPreview').style.display='none';
+    $('#imgPreviewImg').src='';
+    $('#imgSizeInfo').textContent='';
+    $('#imgDropZone').style.display='';
+    $('#imgFileInput').value='';
+}
+async function compressImage(base64,type){
+    return new Promise((resolve)=>{
+        const img=new Image();
+        img.onload=()=>{
+            const maxW=800,maxH=1200;
+            let w=img.width,h=img.height;
+            if(w>maxW){h=h*maxW/w;w=maxW}
+            if(h>maxH){w=w*maxH/h;h=maxH}
+            const canvas=document.createElement('canvas');
+            canvas.width=w;canvas.height=h;
+            const ctx=canvas.getContext('2d');
+            ctx.drawImage(img,0,0,w,h);
+            currentImgData=canvas.toDataURL(type,0.7);
+            const kb=(currentImgData.length*0.75/1024).toFixed(1);
+            $('#imgSizeInfo').textContent='压缩后：'+kb+' KB';
+            resolve(currentImgData);
+        };
+        img.src=base64;
+    });
+}
+
+// ═══════════════════════════════════════════════
+// 练习
+// ═══════════════════════════════════════════════
+async function loadPractice(){
+const today=todayStr();
+checkPrevPractice();
+let p=tx('daily_practice','readonly');
+let row=await prom(p.get(today));
+
+if(row){
+const ids=JSON.parse(row.questions);
+const sq=tx('wrong_questions');
+const all=await prom(sq.getAll());
+const questions=ids.map(id=>all.find(q=>q.id===id)).filter(Boolean);
+const pr=tx('practice_results');
+const results=await prom(pr.getAll());
+const tResults=results.filter(r=>r.date===today);
+const resultMap={};tResults.forEach(r=>{if(!resultMap[r.question_id])resultMap[r.question_id]=r.result;});
+const qlist=questions.map(q=>({...q,today_result:resultMap[q.id]||null}));
+renderPractice(qlist,today);
+return;
+}
+
+const sq=tx('wrong_questions');
+const all=await prom(sq.getAll());
+const unmastered=all.filter(q=>!q.mastered);
+if(unmastered.length===0){
+$('#practiceList').innerHTML='<div class="empty">所有错题已掌握</div>';
+$('#practiceBar').style.width='0%';$('#practiceSummary').style.display='none';$('#practiceDate').textContent=today;
+return;
+}
+const dailyCount=parseInt(localStorage.getItem('dailyCount')||'15');
+const prs=tx('practice_results');
+const allResults=await prom(prs.getAll());
+const selected=weightedSample(unmastered,dailyCount,allResults);
+const selectedIds=selected.map(q=>q.id);
+const p2=tx('daily_practice','readwrite');
+await prom(p2.put({date:today,questions:JSON.stringify(selectedIds),created_at:new Date().toISOString()}));
+
+// 打卡
+const days=JSON.parse(localStorage.getItem('practiced_days')||'[]');
+if(!days.includes(today)){days.push(today);localStorage.setItem('practiced_days',JSON.stringify(days))}
+renderPractice(selected,today);
+}
+
+function renderPractice(questions,today){
+$('#practiceDate').textContent=today;
+if(questions.length===0){
+$('#practiceList').innerHTML='<div class="empty">没有可练习的题目</div>';
+$('#practiceBar').style.width='0%';$('#practiceSummary').style.display='none';
+return;
+}
+const done=questions.filter(q=>q.today_result!=null).length;
+const correct=questions.filter(q=>q.today_result==='correct').length;
+const wrong=questions.filter(q=>q.today_result==='wrong').length;
+const total=questions.length;
+$('#prCorrect').textContent=correct;$('#prWrong').textContent=wrong;$('#prRemain').textContent=total-done;
+$('#practiceBar').style.width=(done/total*100)+'%';
+$('#practiceSummary').style.display='';
+$('#practiceList').innerHTML=questions.map(q=>{
+const cls=q.today_result==='correct'?'ok':q.today_result==='wrong'?'ng':q.mastered?'mst':'';
+const etypeLabel=q.error_type?ETYPES[q.error_type]:'';
+const tagChips=(q.knowledge_tags||'').split(',').filter(Boolean).map(t=>`<span class="tag-chip" style="font-size:.6rem;padding:1px 5px">${esc(t)}</span>`).join('');
+return`<li class="pi ${cls}">
+<span class="pn">${esc(q.question_number)}</span>
+<span class="pc">${esc(q.chapter)}</span>
+<span class="ps">${esc(q.section||'')} ${esc(q.source||'')}</span>
+${etypeLabel?`<span class="badge badge-e ${ECLASS[q.error_type]||''}">${etypeLabel}</span>`:''}
+${tagChips}
+${q.note?`<span style="font-size:.7rem;color:#6b7280;max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(q.note.slice(0,20))}</span>`:''}
+${q.image_data?`<div style="margin-top:6px"><img src="${q.image_data}" style="max-width:100%;max-height:200px;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.1)"></div>`:''}
+<span class="pm">
+${!q.today_result?`<button class="btn btn-s btn-xs" onclick="markCorrect(${q.id})">已掌握</button>
+<button class="btn btn-d btn-xs" onclick="openErrorModal(${q.id})">再做错</button>`:
+`<span style="font-size:.7rem;font-weight:600;color:${q.today_result==='correct'?'var(--succ)':'var(--danger)'}">${q.today_result==='correct'?'✓':'✗'}</span>`}
+</span></li>`;
+}).join('');
+}
+
+async function markCorrect(qid){await markResult(qid,'correct')}
+function openErrorModal(qid){pendingMarkQid=qid;$('#errorModal').style.display='flex';$$('#etypeBtns button').forEach(b=>b.classList.remove('sel'))}
+async function markResult(qid,result,error_type=''){
+const today=todayStr();
+// 1) 记录练习结果
+const prs=tx('practice_results','readwrite');await prom(prs.add({question_id:qid,date:today,result,error_type}));
+// 2) 更新错题（只读→修改→独立写事务，避免 auto-commit 导致 put 静默丢失）
+await safeGetPut('wrong_questions',qid,q=>{
+if(result==='correct'){
+q.consecutive_correct=(q.consecutive_correct||0)+1;
+q.last_practice_date=today;
+if(q.consecutive_correct>=1)q.mastered=1;
+}else{
+q.consecutive_correct=0;q.mastered=0;
+q.wrong_count=(q.wrong_count||1)+1;
+q.last_wrong_date=today;q.last_practice_date=today;
+if(error_type)q.error_type=error_type;
+}
+});
+await refreshStats();
+await loadPractice();
+}
+
+async function refreshPractice(){
+const today=todayStr();
+const sq=tx('wrong_questions');
+const all=await prom(sq.getAll());
+const unmastered=all.filter(q=>!q.mastered);
+if(unmastered.length===0){toast('没有可练习的错题','err');return}
+const dailyCount=parseInt(localStorage.getItem('dailyCount')||'15');
+const prs=tx('practice_results');
+const allResults=await prom(prs.getAll());
+const selected=weightedSample(unmastered,dailyCount,allResults);
+const selectedIds=selected.map(q=>q.id);
+const p=tx('daily_practice','readwrite');
+await prom(p.put({date:today,questions:JSON.stringify(selectedIds),created_at:new Date().toISOString()}));
+loadPractice();refreshStats();toast('已重新抽题','ok');
+}
+
+// 查看历史练习
+let prevPracticeDate='';
+async function checkPrevPractice(){
+const p=tx('daily_practice','readonly');
+const all=await prom(p.getAll());
+const dates=all.map(r=>r.date).filter(Boolean).sort().reverse();
+if(dates.length===0){$('#btnPrevPractice').style.display='none';return}
+const today=todayStr();
+const prevDates=dates.filter(d=>d!==today);
+if(prevDates.length===0){$('#btnPrevPractice').style.display='none';return}
+$('#btnPrevPractice').style.display='';
+if(!prevPracticeDate)prevPracticeDate=prevDates[0];
+$('#prevDateSel').innerHTML=dates.map(d=>`<option value="${d}" ${d===prevPracticeDate?'selected':''}>${d}</option>`).join('');
+}
+
+async function togglePrevPractice(){
+if($('#prevPractice').style.display==='none'){
+if(!prevPracticeDate){const p=tx('daily_practice','readonly');const all=await prom(p.getAll());const dates=all.map(r=>r.date).sort().reverse();const today=todayStr();prevPracticeDate=dates.find(d=>d!==today)||today}
+await loadPrevDate();
+$('#prevPractice').style.display='';
+$('#btnPrevPractice').textContent='收起历史';
+}else{
+$('#prevPractice').style.display='none';
+$('#btnPrevPractice').textContent='📋 查看上次练习';
+}
+}
+
+async function loadPrevDate(){
+const d=$('#prevDateSel').value||prevPracticeDate;
+if(!d)return;
+const p=tx('daily_practice','readonly');const row=await prom(p.get(d));prevPracticeDate=d;
+$('#prevDateLabel').textContent=d;
+if(!row||!row.questions){$('#prevPracticeList').innerHTML='<div class="empty">该日期无练习记录</div>';$('#prevProgress').style.width='0%';$('#prevSummary').style.display='none';return}
+const ids=JSON.parse(row.questions);
+const sq=tx('wrong_questions');const allQ=await prom(sq.getAll());
+const questions=ids.map(id=>allQ.find(q=>q.id===id)).filter(Boolean);
+const pr=tx('practice_results');const results=await prom(pr.getAll());
+const tResults=results.filter(r=>r.date===d);
+const resultMap={};tResults.forEach(r=>{if(!resultMap[r.question_id])resultMap[r.question_id]=r.result;});
+questions.forEach(q=>{q.today_result=resultMap[q.id]||null});
+const done=questions.filter(q=>q.today_result!=null).length;
+const correct=questions.filter(q=>q.today_result==='correct').length;
+const wrong=questions.filter(q=>q.today_result==='wrong').length;
+$('#prevCorrect').textContent=correct;$('#prevWrong').textContent=wrong;$('#prevRemain').textContent=questions.length-done;
+$('#prevProgress').style.width=(done/questions.length*100)+'%';
+$('#prevSummary').style.display='';
+$('#prevPracticeList').innerHTML=questions.map(q=>{
+const cls=q.today_result==='correct'?'ok':q.today_result==='wrong'?'ng':q.mastered?'mst':'';
+const etypeLabel=q.error_type?ETYPES[q.error_type]:'';
+return`<li class="pi ${cls}"><span class="pn">${esc(q.question_number)}</span><span class="pc">${esc(q.chapter)}</span><span class="ps">${esc(q.section||'')} ${esc(q.source||'')}</span>${etypeLabel?`<span class="badge badge-e ${ECLASS[q.error_type]||''}">${etypeLabel}</span>`:''}<span class="pm">${!q.today_result?`<button class="btn btn-s btn-xs" onclick="markPrevResult(${q.id},'correct','${d}')">已掌握</button><button class="btn btn-d btn-xs" onclick="openPrevErrorModal(${q.id},'${d}')">再做错</button>`:`<span style="font-size:.7rem;font-weight:600;color:${q.today_result==='correct'?'var(--succ)':'var(--danger)'}">${q.today_result==='correct'?'✓':'✗'}</span>`}</span></li>`;
+}).join('');
+}
+
+let pendingPrevQid=null,pendingPrevDate='';
+function openPrevErrorModal(qid,dateStr){pendingPrevQid=qid;pendingPrevDate=dateStr;$('#errorModal').style.display='flex';$$('#etypeBtns button').forEach(b=>b.classList.remove('sel'))}
+async function closeErrorModal(etype){
+$('#errorModal').style.display='none';
+if(pendingPrevQid!==null){await markPrevResult(pendingPrevQid,'wrong',pendingPrevDate,etype||'');pendingPrevQid=null}
+else if(pendingMarkQid!==null){await markResult(pendingMarkQid,'wrong',etype||'');pendingMarkQid=null}
+}
+async function markPrevResult(qid,result,dateStr,error_type=''){
+const rw=tx('practice_results','readwrite');
+const today=todayStr();
+await prom(rw.add({question_id:qid,date:today,result,error_type:error_type||'',created_at:new Date().toISOString()}));
+// 更新题目掌握状态
+const sq=tx('wrong_questions','readwrite');const q=await prom(sq.get(qid));
+if(q){
+if(result==='correct'){q.consecutive_correct=(q.consecutive_correct||0)+1;q.last_practice_date=today;if(q.consecutive_correct>=3)q.mastered=1}
+else{q.consecutive_correct=0;q.mastered=0;q.wrong_count=(q.wrong_count||0)+1;q.last_wrong_date=today;q.last_practice_date=today;q.error_type=error_type||q.error_type||''}
+await prom(sq.put(q));
+}
+await loadPrevDate();refreshStats();
+}
+
+// ═══════════════════════════════════════════════
+// 权重抽题算法
+// ═══════════════════════════════════════════════
+function weightedSample(questions,total,allResults){
+if(questions.length<=total)return [...questions];
+// 权重 = wrong_count * 1.5 + 陈旧度 + 新鲜度
+const weighted=questions.map(q=>{
+let w=(q.wrong_count||1)*1.5;
+// 陈旧度：超过7天没练 +2
+const lastDate=q.last_practice_date||q.last_wrong_date||q.date_added;
+if(lastDate){
+const daysSince=Math.floor((Date.now()-new Date(lastDate).getTime())/(86400000));
+if(daysSince>7)w+=2;
+else w+=daysSince/7*2;
+}
+// 新鲜度：刚做错 +1
+const today=todayStr();
+if(q.last_wrong_date===today)w+=1;
+// 一周内正确过 -0.5
+const weekAgo=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
+const recentCorrect=allResults.filter(r=>r.question_id===q.id&&r.result==='correct'&&r.date>=weekAgo).length;
+w-=recentCorrect*0.5;
+w=Math.max(w,0.5);
+return{question:q,weight:w};
+});
+
+// 章节均衡抽题
+const chapters={};
+weighted.forEach(wq=>{
+const ch=wq.question.chapter||'未分类';
+if(!chapters[ch])chapters[ch]=[];
+chapters[ch].push(wq);
+});
+
+const chapterKeys=Object.keys(chapters);
+let slotsPerChapter=Math.ceil(total/chapterKeys.length);
+const selected=[];
+const usedIds=new Set();
+
+// 每个章节按权重取
+for(const ch of chapterKeys){
+const pool=chapters[ch].filter(wq=>!usedIds.has(wq.question.id));
+if(pool.length===0)continue;
+const take=Math.min(slotsPerChapter,pool.length);
+// 加权随机取
+const taken=weightedRandomPick(pool,take);
+taken.forEach(t=>{selected.push(t.question);usedIds.add(t.question.id)});
+}
+
+// 如果不够，从剩余补足
+if(selected.length<total){
+const remaining=weighted.filter(wq=>!usedIds.has(wq.question.id));
+const extra=weightedRandomPick(remaining,total-selected.length);
+extra.forEach(t=>{selected.push(t.question);usedIds.add(t.question.id)});
+}
+
+return selected;
+}
+
+function weightedRandomPick(items,n){
+if(items.length<=n)return items;
+const result=[];const pool=[...items];
+for(let i=0;i<n&&pool.length>0;i++){
+const totalWeight=pool.reduce((s,it)=>s+it.weight,0);
+let rnd=Math.random()*totalWeight;
+let pickIdx=0;
+for(let j=0;j<pool.length;j++){
+rnd-=pool[j].weight;
+if(rnd<=0){pickIdx=j;break;}
+}
+result.push(pool[pickIdx]);
+pool.splice(pickIdx,1);
+}
+return result;
+}
+
+// ═══════════════════════════════════════════════
+// 题库
+// ═══════════════════════════════════════════════
+function debounceSearch(){clearTimeout(st);st=setTimeout(loadBank,300)}
+async function loadBank(){
+const chapter=$('#filterChapter').value;
+const search=$('#searchBox').value.trim().toLowerCase();
+const s=tx('wrong_questions');
+let all=await prom(s.getAll());
+// 更新筛选下拉
+const chapters=[...new Set(all.map(q=>q.chapter).filter(Boolean).sort())];
+const sel=$('#filterChapter');
+if(chapters.length!==sel.options.length-1){
+sel.innerHTML='<option value="">全部</option>'+chapters.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
+}
+if(search){all=all.filter(q=>[q.question_number,q.chapter,q.section].some(f=>(f||'').toLowerCase().includes(search)))}
+if(chapter)all=all.filter(q=>q.chapter===chapter);
+all.sort((a,b)=>String(a.chapter).localeCompare(String(b.chapter))||String(a.section).localeCompare(String(b.section))||String(a.question_number).localeCompare(String(b.question_number)));
+const tbody=$('#bankTbody');
+if(all.length===0){tbody.innerHTML='<tr><td colspan="9" class="empty">暂无题目</td></tr>';return}
+tbody.innerHTML=all.map(q=>{
+const ms=q.mastered?'<span class="badge badge-m">已掌握</span>':`<span class="badge" style="background:#fef3c7;color:#92400e">${q.wrong_count||1}次错误</span>`;
+const etype=q.error_type?`<span class="badge badge-e ${ECLASS[q.error_type]||''}">${ETYPES[q.error_type]||q.error_type}</span>`:'-';
+const tags=(q.knowledge_tags||'').split(',').filter(Boolean).map(t=>`<span class="tag-chip" style="font-size:.6rem;padding:1px 4px">${esc(t)}</span>`).join('')||'-';
+return`<tr>
+<td><input type="checkbox" class="bank-cb" value="${q.id}"></td>
+<td>${q.image_data?'<span style="color:#4f46e5;font-size:.85rem" title="有图片">&#128247;</span>':''}<strong>${esc(q.question_number)}</strong></td>
+<td>${esc(q.chapter)}</td>
+<td>${esc(q.section||'-')}</td>
+<td>${tags}</td>
+<td>${etype}</td>
+<td>${q.wrong_count||1}</td>
+<td>${ms}</td>
+<td style="font-size:.65rem;color:var(--t2)">${q.date_added||''}</td>
+</tr>`;
+}).join('');
+}
+
+async function deleteSelected(){
+const cbs=$$('.bank-cb:checked');
+if(cbs.length===0){toast('请先勾选要删除的题目','err');return}
+if(!confirm('确定删除 '+cbs.length+' 道题？此操作不可恢复。'))return;
+const ids=Array.from(cbs).map(cb=>parseInt(cb.value));
+const sq=tx('wrong_questions','readwrite');
+for(const id of ids)await prom(sq.delete(id));
+const prs=tx('practice_results','readwrite');
+const results=await prom(prs.getAll());
+for(const r of results){if(ids.includes(r.question_id))await prom(prs.delete(r.id))}
+toast('已删除 '+ids.length+' 道题','ok');loadBank();refreshStats();
+}
+
+function exportCSV(){
+tx('wrong_questions').getAll().onsuccess=function(e){
+const rows=e.target.result;
+let csv='\uFEFF题号,章节,小节,来源,错误次数,连续正确,已掌握,错因,知识点标签,难度,题型,备注,添加日期,最后错误日,最后练习日\n';
+rows.forEach(r=>{
+csv+=`"${r.question_number}","${r.chapter}","${r.section||''}","${r.source||''}",${r.wrong_count||1},${r.consecutive_correct||0},${r.mastered?'yes':'-'},"${ETYPES[r.error_type]||r.error_type||''}","${r.knowledge_tags||''}","${r.difficulty||''}","${r.question_type||''}","${(r.note||'').replace(/"/g,'""')}","${r.date_added||''}","${r.last_wrong_date||''}","${r.last_practice_date||''}"\n`;
+});
+const blob=new Blob([csv],{type:'text/csv'});
+const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='错题库导出.csv';a.click();
+toast('导出成功','ok');
+};
+}
+
+// ═══════════════════════════════════════════════
+// 统计
+// ═══════════════════════════════════════════════
+async function loadStats(){
+const sq=tx('wrong_questions');
+const all=await prom(sq.getAll());
+const prs=tx('practice_results');
+const results=await prom(prs.getAll());
+
+// 错因分布
+const wrongResults=results.filter(r=>r.result==='wrong');
+const eCount={careless:0,concept:0,calculation:0,method:0};
+let unlabeled=0;
+wrongResults.forEach(r=>{if(r.error_type&&eCount.hasOwnProperty(r.error_type))eCount[r.error_type]++;else unlabeled++;});
+const entries=Object.entries(eCount).filter(([,c])=>c>0);
+entries.sort(([,a],[,b])=>b-a);
+const colors={careless:'#f59e0b',concept:'#ec4899',calculation:'#6366f1',method:'#ef4444'};
+const maxE=Math.max(...entries.map(([,c])=>c),1);
+let eHtml=entries.map(([k,c])=>`<div class="etype-row"><span class="elabel">${ETYPES[k]}</span><div class="ebar-bg"><div class="ebar-fill" style="width:${c/maxE*100}%;background:${colors[k]}">${c}</div></div></div>`).join('');
+if(unlabeled>0)eHtml+=`<div class="etype-row"><span class="elabel">未分类</span><div class="ebar-bg"><div class="ebar-fill" style="width:${unlabeled/maxE*100}%;background:#9ca3af">${unlabeled}</div></div></div>`;
+if(!eHtml)eHtml='<div class="empty">暂无练习数据</div>';
+$('#etypeDist').innerHTML=eHtml;
+
+// 热力图
+const chMap={};
+all.forEach(q=>{const ch=q.chapter||'未分类';if(!chMap[ch])chMap[ch]={total:0,mastered:0,avgWrong:0,careless:0,concept:0,calc:0,method:0};chMap[ch].total++;chMap[ch].avgWrong+=q.wrong_count||1;if(q.mastered)chMap[ch].mastered++;if(q.error_type==='careless')chMap[ch].careless++;if(q.error_type==='concept')chMap[ch].concept++;if(q.error_type==='calculation')chMap[ch].calc++;if(q.error_type==='method')chMap[ch].method++;});
+const hmEntries=Object.entries(chMap);
+hmEntries.forEach(([,d])=>d.avgWrong=Math.round(d.avgWrong/d.total*10)/10);
+hmEntries.sort(([,a],[,b])=>(b.mastered/b.total)-(a.mastered/a.total));
+let hmHtml='';
+hmEntries.forEach(([ch,d])=>{
+const mp=Math.round(d.mastered/d.total*100);
+let color=mp>=70?'#10b981':mp>=40?'#f59e0b':'#ef4444';
+const etips=[];
+if(d.careless)etips.push('粗心'+d.careless);if(d.concept)etips.push('概念'+d.concept);if(d.calc)etips.push('计算'+d.calc);if(d.method)etips.push('方法'+d.method);
+hmHtml+=`<div class="hm-row"><span class="hm-ch">${esc(ch)}</span><div class="hm-bar-bg"><div class="hm-bar-fill" style="width:${mp}%;background:${color}">${mp}%</div></div><span class="hm-num">${d.mastered}/${d.total}</span><span style="font-size:.6rem;color:var(--t2)">${etips.join('·')}</span></div>`;
+});
+if(!hmHtml)hmHtml='<div class="empty">暂无题目数据</div>';
+$('#heatmapGrid').innerHTML=hmHtml;
+}
+
+// ═══════════════════════════════════════════════
+// 设置
+// ═══════════════════════════════════════════════
+async function loadSettings(){
+const dc=localStorage.getItem('dailyCount')||'15';$('#setDailyCount').value=dc;
+const rt=localStorage.getItem('remind_time');if(rt)$('#setRemindTime').value=rt;
+const ed=localStorage.getItem('exam_date');if(ed)$('#setExamDate').value=ed;
+const su=localStorage.getItem('sync_url');if(su)$('#setSyncUrl').value=su;
+updateReminderStatus();updateStreak();
+}
+
+async function saveSettings(){
+const dc=parseInt($('#setDailyCount').value);
+if(dc<5||dc>50){toast('题数范围 5-50','err');return}
+localStorage.setItem('dailyCount',String(dc));
+const ed=$('#setExamDate').value;if(ed)localStorage.setItem('exam_date',ed);
+const su=$('#setSyncUrl').value.trim();if(su)localStorage.setItem('sync_url',su);
+toast('已保存','ok');
+}
+
+function enableReminder(){
+if(!('Notification' in window)){toast('此浏览器不支持通知','err');return}
+const time=$('#setRemindTime').value;
+if(!time){toast('请先设置提醒时间','err');return}
+localStorage.setItem('remind_time',time);
+Notification.requestPermission().then(perm=>{
+if(perm==='granted'){scheduleReminder(time);toast('提醒已开启','ok');updateReminderStatus();}
+else toast('需要允许通知权限','err');
+});
+}
+
+function scheduleReminder(time){
+const [h,m]=time.split(':').map(Number);
+function checkAndNotify(){
+const now=new Date();
+if(now.getHours()===h&&now.getMinutes()===m){
+new Notification('错题练习提醒',{body:'今天的错题练习还没做哦，快来练习吧！',icon:'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📝</text></svg>'});
+}
+}
+setInterval(checkAndNotify,60000);
+checkAndNotify();
+}
+
+function updateReminderStatus(){
+const rt=localStorage.getItem('remind_time');
+if(Notification.permission==='granted'&&rt){
+$('#reminderStatus').textContent='已开启，每天 '+rt+' 提醒';
+}else if(Notification.permission==='denied'){
+$('#reminderStatus').textContent='通知权限被拒绝，请在浏览器设置中开启';
+}else{
+$('#reminderStatus').textContent='未开启';
+}
+}
+
+function updateStreak(){
+const days=JSON.parse(localStorage.getItem('practiced_days')||'[]');
+days.sort();
+let streak=0;
+let check=new Date(todayStr());
+check.setDate(check.getDate()-1);
+for(let i=days.length-1;i>=0;i--){
+if(days[i]===todayStr()){
+streak++;
+check.setDate(check.getDate()-1);
+continue;
+}
+let d=new Date(days[i]);
+// 算连续
+if(d.getTime()<check.getTime())break;
+streak++;
+check.setDate(check.getDate()-1);
+if(i>0&&days[i-1]!==new Date(check.getTime()+86400000).toISOString().slice(0,10)){
+const prev=new Date(days[i-1]);
+if(Math.abs(prev.getTime()-d.getTime())>86400000)break;
+}
+}
+$('#streakNum').textContent=streak||0;
+}
+
+async function resetAllMastered(){
+if(!confirm('确定要将所有题目重置为未掌握状态吗？方便开启第二轮刷题。'))return;
+const rs=tx('wrong_questions','readonly');
+const all=await prom(rs.getAll());
+for(const q of all){q.mastered=0;q.consecutive_correct=0}
+await bulkPut('wrong_questions',all);
+// 清除今日练习缓存
+const dp=tx('daily_practice','readwrite');await prom(dp.delete(todayStr()));
+toast('已重置，可开始新一轮刷题','ok');refreshStats();loadPractice();
+}
+
+// ═══════════════════════════════════════════════
+// 知识点标签管理
+// ═══════════════════════════════════════════════
+let currentTags=[];
+function handleTagKey(e){
+if(e.key==='Enter'){e.preventDefault();const v=$('#tagInput').value.trim();if(v){addTag(v);$('#tagInput').value='';updateTagSuggest();}}
+if(e.key==='Backspace'&&$('#tagInput').value===''&&currentTags.length>0){removeTag(currentTags.length-1)}
+}
+function getCurrentTags(){return [...currentTags]}
+function addTag(tag){if(!currentTags.includes(tag)){currentTags.push(tag);renderTags()}}
+function removeTag(i){currentTags.splice(i,1);renderTags()}
+function renderTags(){
+const wrap=$('#tagInputWrap');
+const input=$('#tagInput');
+const chips=currentTags.map((t,i)=>`<span class="tag-chip">${esc(t)}<span class="tag-x" onclick="removeTag(${i})">×</span></span>`).join('');
+wrap.innerHTML=chips;wrap.appendChild(input);wrap.appendChild($('#tagSuggest'));
+}
+function updateTagSuggest(){
+// 从已有标签中获取建议
+tx('wrong_questions').getAll().onsuccess=function(e){
+const all=e.target.result;
+const allTags=new Set();all.forEach(q=>{(q.knowledge_tags||'').split(',').forEach(t=>{t=t.trim();if(t)allTags.add(t)})});
+const v=$('#tagInput').value.trim().toLowerCase();
+const matches=[...allTags].filter(t=>t.toLowerCase().includes(v)&&!currentTags.includes(t)).slice(0,5);
+$('#tagSuggest').textContent=matches.length?matches.join(' · '):'';
+};
+}
+
+// ═══════════════════════════════════════════════
+// 专项突破
+// ═══════════════════════════════════════════════
+async function loadTargetedForm(){
+const sq=tx('wrong_questions');const all=await prom(sq.getAll());
+// 填充章节选项
+const chapters=[...new Set(all.map(q=>q.chapter).filter(Boolean).sort())];
+const chSel=$('#btChapter');chSel.innerHTML='<option value="">全部</option>'+chapters.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
+// 填充标签选项
+const allTags=new Set();all.forEach(q=>{(q.knowledge_tags||'').split(',').forEach(t=>{t=t.trim();if(t)allTags.add(t)})});
+const tagSel=$('#btTag');tagSel.innerHTML='<option value="">全部</option>'+[...allTags].sort().map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('');
+}
+
+async function loadTargetedPractice(){
+const ch=$('#btChapter').value,et=$('#btEtype').value,tag=$('#btTag').value,diff=$('#btDifficulty').value,qt=$('#btQtype').value;
+const count=parseInt($('#btCount').value)||15;
+const sq=tx('wrong_questions');const all=await prom(sq.getAll());
+let filtered=all.filter(q=>!q.mastered);
+if(ch)filtered=filtered.filter(q=>q.chapter===ch);
+if(et)filtered=filtered.filter(q=>q.error_type===et);
+if(tag)filtered=filtered.filter(q=>(q.knowledge_tags||'').includes(tag));
+if(diff)filtered=filtered.filter(q=>q.difficulty===diff);
+if(qt)filtered=filtered.filter(q=>q.question_type===qt);
+
+$('#btAvailable').textContent=`共 ${filtered.length} 道未掌握题目可用`;
+if(filtered.length===0){$('#btResults').style.display='none';toast('没有符合条件的题目','err');return}
+
+// 按权重选取
+const prs=tx('practice_results');const results=await prom(prs.getAll());
+const selected=weightedSample(filtered,Math.min(count,filtered.length),results);
+btQuestions=selected;
+btResults={};btQuestions.forEach(q=>{btResults[q.id]=null});
+renderBtList();
+$('#btResults').style.display='';
+}
+
+let btQuestions=[],btResults={};
+function renderBtList(){
+const done=Object.values(btResults).filter(r=>r!==null).length;
+const total=btQuestions.length;
+$('#btDoneCount').textContent=done;$('#btTotalCount').textContent=total;
+$('#btBar').style.width=(done/total*100)+'%';
+$('#btList').innerHTML=btQuestions.map(q=>{
+const r=btResults[q.id];const cls=r==='correct'?'sel':'';const tagChips=(q.knowledge_tags||'').split(',').filter(Boolean).map(t=>`<span class="tag-chip" style="font-size:.6rem;padding:1px 4px">${esc(t)}</span>`).join('');
+return`<li class="bt-ri ${cls}">
+<span class="bt-qn">${esc(q.question_number)}</span>
+<span>${esc(q.section||'')}</span>
+${tagChips}
+${q.image_data?`<div style="margin-top:4px"><img src="${q.image_data}" style="max-width:100%;max-height:150px;border-radius:6px;box-shadow:0 1px 3px rgba(0,0,0,.1)"></div>`:''}
+<span class="bt-ch">${esc(q.chapter)}</span>
+${r?`<span style="color:${r==='correct'?'var(--succ)':'var(--danger)'};font-weight:700">${r==='correct'?'✓':'✗'}</span>`:
+`<span style="display:flex;gap:3px"><button class="btn btn-s btn-xs" onclick="markBtResult(${q.id},'correct')">对</button><button class="btn btn-d btn-xs" onclick="markBtResult(${q.id},'wrong')">错</button></span>`}
+</li>`}).join('');
+}
+
+async function markBtResult(qid,result){
+const today=todayStr();
+btResults[qid]=result;
+// 记录结果
+const prs=tx('practice_results','readwrite');await prom(prs.add({question_id:qid,date:today,result,error_type:''}));
+await safeGetPut('wrong_questions',qid,q=>{
+if(result==='correct'){q.consecutive_correct=(q.consecutive_correct||0)+1;q.last_practice_date=today;if(q.consecutive_correct>=1)q.mastered=1;}
+else{q.consecutive_correct=0;q.mastered=0;q.wrong_count=(q.wrong_count||1)+1;q.last_wrong_date=today;q.last_practice_date=today;}
+});
+renderBtList();
+if(Object.values(btResults).every(r=>r!==null)){toast('突破完成！','ok');recordTimeEnd();}
+refreshStats();
+}
+
+// ═══════════════════════════════════════════════
+// 计时器
+// ═══════════════════════════════════════════════
+let timerRunning=false,timerSeconds=0,timerInterval=null,timerQuestionCount=0;
+function toggleTimer(){
+if(timerRunning){stopTimer();return}
+timerRunning=true;timerQuestionCount=0;
+$('#btnTimer').textContent='暂停';$('#btnEndSession').style.display='';
+if(timerSeconds===0)localStorage.setItem('session_start',Date.now().toString());
+timerInterval=setInterval(()=>{timerSeconds++;updateTimerDisplay()},1000);
+}
+function stopTimer(){timerRunning=false;clearInterval(timerInterval);$('#btnTimer').textContent='继续';}
+function updateTimerDisplay(){const m=Math.floor(timerSeconds/60).toString().padStart(2,'0');const s=(timerSeconds%60).toString().padStart(2,'0');$('#timerClock').textContent=m+':'+s}
+function endSession(){
+stopTimer();timerRunning=false;
+$('#btnTimer').textContent='开始计时';$('#btnEndSession').style.display='none';
+recordTimeEnd();
+}
+function recordTimeEnd(){
+if(timerSeconds<10)return;
+const duration=timerSeconds;
+const qCount=timerQuestionCount||0;
+// 存到 localStorage 作为离线记录
+const sessions=JSON.parse(localStorage.getItem('study_sessions')||'[]');
+sessions.push({date:todayStr(),duration_seconds:duration,question_count:qCount,start_time:new Date(Date.now()-duration*1000).toISOString(),end_time:new Date().toISOString()});
+localStorage.setItem('study_sessions',JSON.stringify(sessions));
+timerSeconds=0;updateTimerDisplay();timerQuestionCount=0;
+toast(`已记录 ${Math.floor(duration/60)} 分钟学习时间`,'ok');
+}
+
+// 重写 markResult 以集成计时器
+const origMarkResult=markResult;
+markResult=async function(qid,result,error_type){
+timerQuestionCount++;
+return origMarkResult(qid,result,error_type);
+};
+
+// ═══════════════════════════════════════════════
+// 趋势图
+// ═══════════════════════════════════════════════
+function drawTrendChart(canvasId,data,options={}){
+const canvas=$(canvasId);if(!canvas)return;const ctx=canvas.getContext('2d');
+const dpr=window.devicePixelRatio||1;const rect=canvas.getBoundingClientRect();
+canvas.width=rect.width*dpr;canvas.height=parseInt(canvas.getAttribute('height'))*dpr;
+ctx.scale(dpr,dpr);const w=rect.width,h=parseInt(canvas.getAttribute('height'));
+ctx.clearRect(0,0,w,h);
+if(!data||data.length===0){ctx.fillStyle='#9ca3af';ctx.font='12px sans-serif';ctx.textAlign='center';ctx.fillText('暂无数据',w/2,h/2);return}
+
+const pad={top:20,right:20,bottom:30,left:40};
+const cw=w-pad.left-pad.right,ch=h-pad.top-pad.bottom;
+const maxVal=options.maxVal||Math.max(...data.map(d=>d.value||d.correct+d.wrong||1),1);
+const maxBar=options.maxBar||Math.max(...data.map(d=>d.total||d.correct+d.wrong||1),1);
+
+// 网格
+ctx.strokeStyle='#e5e7eb';ctx.lineWidth=0.5;
+for(let i=0;i<=4;i++){const y=pad.top+ch*i/4;ctx.beginPath();ctx.moveTo(pad.left,y);ctx.lineTo(pad.left+cw,y);ctx.stroke();}
+
+// 柱状图
+const barW=Math.min(16,cw/data.length-4);
+data.forEach((d,i)=>{
+const x=pad.left+i*(cw/data.length)+(cw/data.length-barW)/2;
+const total=d.total||d.correct+d.wrong||0;
+const correct=d.correct||0;
+const wrong=d.wrong||0;
+const val=d.value||total;
+// 正确部分
+if(maxBar>0&&correct>0){ctx.fillStyle='#10b981';const bh=correct/maxBar*ch;ctx.fillRect(x,pad.top+ch-bh,barW/2,bh)}
+// 错误部分
+if(maxBar>0&&wrong>0){ctx.fillStyle='#ef4444';const bh=wrong/maxBar*ch;ctx.fillRect(x+barW/2,pad.top+ch-bh,barW/2,bh)}
+// 标签
+ctx.fillStyle='#6b7280';ctx.font='9px sans-serif';ctx.textAlign='center';
+ctx.fillText(options.labels?options.labels[i]:d.label||'',x+barW/2,pad.top+ch+14);
+// 数值
+if(val>0){ctx.fillStyle='#1f2937';ctx.font='8px sans-serif';ctx.fillText(val,x+barW/2,pad.top+ch-(val/maxBar*ch)-2)}
+});
+
+// 正确率折线
+if(options.showAccuracy&&data.some(d=>d.accuracy!==undefined)){
+ctx.strokeStyle='#6366f1';ctx.lineWidth=2;ctx.beginPath();
+data.forEach((d,i)=>{
+const x=pad.left+i*(cw/data.length)+cw/data.length/2;
+const acc=d.accuracy!==undefined?d.accuracy:(d.correct+d.wrong>0?Math.round(d.correct/(d.correct+d.wrong)*100):0);
+const y=pad.top+ch-acc/100*ch;
+if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+});
+ctx.stroke();
+// 数据点
+data.forEach((d,i)=>{
+const x=pad.left+i*(cw/data.length)+cw/data.length/2;
+const acc=d.accuracy!==undefined?d.accuracy:(d.correct+d.wrong>0?Math.round(d.correct/(d.correct+d.wrong)*100):0);
+const y=pad.top+ch-acc/100*ch;
+ctx.fillStyle='#6366f1';ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fill();
+ctx.fillStyle='#6366f1';ctx.font='8px sans-serif';ctx.textAlign='center';ctx.fillText(acc+'%',x,y-6);
+});
+}
+
+// Y轴
+ctx.fillStyle='#9ca3af';ctx.font='8px sans-serif';ctx.textAlign='right';
+for(let i=0;i<=4;i++){ctx.fillText(Math.round(maxVal*i/4),pad.left-4,pad.top+ch-ch*i/4+3)}
+}
+
+function drawBarChart(canvasId,data,options={}){
+const canvas=$(canvasId);if(!canvas)return;const ctx=canvas.getContext('2d');
+const dpr=window.devicePixelRatio||1;const rect=canvas.getBoundingClientRect();
+canvas.width=rect.width*dpr;canvas.height=parseInt(canvas.getAttribute('height'))*dpr;
+ctx.scale(dpr,dpr);const w=rect.width,h=parseInt(canvas.getAttribute('height'));
+ctx.clearRect(0,0,w,h);
+if(!data||data.length===0){ctx.fillStyle='#9ca3af';ctx.font='12px sans-serif';ctx.textAlign='center';ctx.fillText('暂无数据',w/2,h/2);return}
+
+const pad={top:20,right:20,bottom:30,left:40};
+const cw=w-pad.left-pad.right,ch=h-pad.top-pad.bottom;
+const maxVal=options.maxVal||Math.max(...data.map(d=>d.value||0),1);
+
+// 网格
+ctx.strokeStyle='#e5e7eb';ctx.lineWidth=0.5;
+for(let i=0;i<=4;i++){const y=pad.top+ch*i/4;ctx.beginPath();ctx.moveTo(pad.left,y);ctx.lineTo(pad.left+cw,y);ctx.stroke()}
+
+const barW=Math.min(24,cw/data.length-6);
+data.forEach((d,i)=>{
+const x=pad.left+i*(cw/data.length)+(cw/data.length-barW)/2;
+const v=d.value||0;
+if(v>0){
+const gradient=ctx.createLinearGradient(x,pad.top+ch,x,pad.top+ch-v/maxVal*ch);
+gradient.addColorStop(0,'#10b981');gradient.addColorStop(1,'#34d399');
+ctx.fillStyle=gradient;
+ctx.fillRect(x,pad.top+ch-v/maxVal*ch,barW,v/maxVal*ch);
+}
+ctx.fillStyle='#6b7280';ctx.font='9px sans-serif';ctx.textAlign='center';
+ctx.fillText(options.labels?options.labels[i]:d.label||'',x+barW/2,pad.top+ch+14);
+if(v>0){ctx.fillStyle='#1f2937';ctx.font='8px sans-serif';ctx.fillText(v,x+barW/2,pad.top+ch-v/maxVal*ch-2)}
+});
+// Y轴
+ctx.fillStyle='#9ca3af';ctx.font='8px sans-serif';ctx.textAlign='right';
+for(let i=0;i<=4;i++){ctx.fillText(Math.round(maxVal*i/4),pad.left-4,pad.top+ch-ch*i/4+3)}
+}
+
+// ═══════════════════════════════════════════════
+// 智能诊断 + 趋势图加载
+// ═══════════════════════════════════════════════
+const origLoadStats=loadStats;
+loadStats=async function(){
+await origLoadStats();
+// 加载诊断
+await loadDiagnosis();
+// 加载趋势图
+await loadTrends();
+// 加载预测
+await loadPrediction();
+// 加载深度分析
+await loadDeepAnalysis();
+// 加载聚类、周报、目标计划
+await loadClusters();await loadWeeklyReport();await loadGoalPlan();
+}
+
+async function loadDiagnosis(){
+const sq=tx('wrong_questions');const all=await prom(sq.getAll());
+const prs=tx('practice_results');const results=await prom(prs.getAll());
+const today=todayStr();
+
+// 薄弱章节
+const chMap={};
+all.forEach(q=>{const ch=q.chapter||'未分类';if(!chMap[ch])chMap[ch]={total:0,mastered:0,errors:{careless:0,concept:0,calculation:0,method:0}};chMap[ch].total++;if(q.mastered)chMap[ch].mastered++;const et=q.error_type;if(et&&chMap[ch].errors[et]!==undefined)chMap[ch].errors[et]++;});
+const weakCh=[];
+for(const[ch,d]of Object.entries(chMap)){
+const pct=Math.round(d.mastered/d.total*100);
+if(pct<50&&d.total>=3){const topEt=Object.entries(d.errors).sort(([,a],[,b])=>b-a)[0];weakCh.push({chapter:ch,mastery_pct:pct,total:d.total,top_error:ETYPES[topEt[0]]||topEt[0],top_error_count:topEt[1]})}
+}
+weakCh.sort((a,b)=>a.mastery_pct-b.mastery_pct);
+
+// 错因排名
+const eCount={careless:0,concept:0,calculation:0,method:0};
+all.forEach(q=>{const et=q.error_type;if(et&&eCount[et]!==undefined)eCount[et]++});
+const eRank=Object.entries(eCount).filter(([,c])=>c>0).sort(([,a],[,b])=>b-a);
+const eTotal=eRank.reduce((s,[,c])=>s+c,0);
+
+// 长期未练习
+const twoWeeksAgo=new Date(Date.now()-14*86400000).toISOString().slice(0,10);
+const stale=all.filter(q=>!q.mastered&&(q.last_practice_date||q.last_wrong_date||q.date_added)<twoWeeksAgo).slice(0,10);
+
+// 近期趋势
+const weekAgo=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
+const twoWeeks=new Date(Date.now()-14*86400000).toISOString().slice(0,10);
+const recentR=results.filter(r=>r.date>=weekAgo);
+const earlierR=results.filter(r=>r.date>=twoWeeks&&r.date<weekAgo);
+const recentAcc=recentR.length?Math.round(recentR.filter(r=>r.result==='correct').length/recentR.length*100):0;
+const earlierAcc=earlierR.length?Math.round(earlierR.filter(r=>r.result==='correct').length/earlierR.length*100):0;
+
+// 建议
+const sg=[];
+if(weakCh.length)sg.push(`最薄弱章节【${weakCh[0].chapter}】，掌握率仅${weakCh[0].mastery_pct}%，建议专项突破`);
+if(eRank.length)sg.push(`最常见错因【${ETYPES[eRank[0][0]]}】(占${Math.round(eRank[0][1]/eTotal*100)}%)，需要针对性训练`);
+if(stale.length)sg.push(`有${stale.length}道题超过14天未练习，建议及时回顾`);
+if(recentAcc<earlierAcc&&recentAcc<60)sg.push('近期正确率下降，建议放慢节奏，确保每题真正理解');
+
+$('#diagList').innerHTML=sg.length?sg.map(s=>`<li>${s}</li>`).join(''):'<li>继续保持，所有指标良好！</li>';
+
+// 统计卡片
+const mastered=all.filter(q=>q.mastered).length;
+const sessions=JSON.parse(localStorage.getItem('study_sessions')||'[]');
+const totalMin=Math.round(sessions.reduce((s,se)=>s+(se.duration_seconds||0),0)/60);
+const daysStudied=new Set(sessions.map(s=>s.date)).size;
+$('#diagStats').innerHTML=`
+<div class="diag-stat"><div class="dv">${mastered}/${all.length}</div><div class="dl">整体掌握</div></div>
+<div class="diag-stat"><div class="dv">${recentAcc}%</div><div class="dl">近期正确率</div></div>
+<div class="diag-stat"><div class="dv">${totalMin}分</div><div class="dl">总学习时长</div></div>
+<div class="diag-stat"><div class="dv">${daysStudied}天</div><div class="dl">学习天数</div></div>`;
+}
+
+async function loadClusters(){
+const sq=tx('wrong_questions');const allQ=await prom(sq.getAll());
+const prs=tx('practice_results');const allPR=await prom(prs.getAll());
+const weekAgo=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
+const recentWrong=allPR.filter(r=>r.result==='wrong'&&r.date>=weekAgo);
+if(recentWrong.length===0){$('#clusterAlerts').innerHTML='<div style="font-size:.7rem;color:var(--t2);padding:4px 0">近7天无错误记录，继续保持！</div>';return}
+const enriched=recentWrong.map(r=>{const q=allQ.find(q=>q.id===r.question_id);return{...r,chapter:q?q.chapter:'',difficulty:q?q.difficulty:'',knowledge_tags:q?q.knowledge_tags:'',question_number:q?q.question_number:''}});
+const tagClusters={};const chapterError={};
+enriched.forEach(r=>{const tags=(r.knowledge_tags||'').split(',');tags.forEach(t=>{t=t.trim();if(t){if(!tagClusters[t])tagClusters[t]=[];tagClusters[t].push(r)}});
+const key=(r.chapter||'未分类')+'|'+(r.error_type||'unknown');if(!chapterError[key])chapterError[key]=[];chapterError[key].push(r)});
+const alerts=[];
+Object.entries(tagClusters).sort((a,b)=>b[1].length-a[1].length).forEach(([tag,items])=>{if(items.length>=3){const chapters=[...new Set(items.map(r=>r.chapter).filter(Boolean))];alerts.push({type:'tag',level:items.length>=5?'critical':'warning',tag,count:items.length,chapters,message:`"${tag}" 知识点近7天出错 ${items.length} 次，建议专题回顾相关理论`})}});
+Object.entries(chapterError).sort((a,b)=>b[1].length-a[1].length).forEach(([key,items])=>{if(items.length>=3){const[ch,et]=key.split('|');const el=ETYPES[et]||et;alerts.push({type:'chapter_error',level:items.length>=5?'critical':'warning',chapter:ch,count:items.length,error_label:el,message:`【${ch}】的${el}已连续出错 ${items.length} 次，建议专项突破`})}});
+alerts.sort((a,b)=>b.count-a.count);
+if(alerts.length===0){$('#clusterAlerts').innerHTML='<div style="font-size:.7rem;color:var(--t2);padding:4px 0">近7天无显著错误聚类模式</div>';return}
+$('#clusterSubtitle').textContent=`近7天共 ${recentWrong.length} 次错误，发现 ${alerts.length} 个聚类模式`;
+$('#clusterAlerts').innerHTML=alerts.slice(0,8).map(a=>{const icon=a.level==='critical'?'🔴':'🟡';const typeLabel=a.type==='tag'?'标签':'章节×错因';return`<div class="cluster-alert ${a.level}"><div class="ca-icon">${icon}</div><div class="ca-body"><div class="ca-msg">${esc(a.message)}</div><div class="ca-meta">${typeLabel} · 出错${a.count}次${a.chapters&&a.chapters.length?' · 涉及：'+a.chapters.join('、'):''}</div></div></div>`}).join('')}
+
+async function loadWeeklyReport(){
+const sq=tx('wrong_questions');const allQ=await prom(sq.getAll());
+const prs=tx('practice_results');const allPR=await prom(prs.getAll());
+const today=todayStr();const weekAgo=new Date(Date.now()-7*86400000).toISOString().slice(0,10);
+const prevWeekAgo=new Date(Date.now()-14*86400000).toISOString().slice(0,10);
+const tw=allPR.filter(r=>r.date>=weekAgo);const pw=allPR.filter(r=>r.date>=prevWeekAgo&&r.date<weekAgo);
+const twCor=tw.filter(r=>r.result==='correct').length;const twAcc=tw.length?Math.round(twCor/tw.length*100):0;
+const pwCor=pw.filter(r=>r.result==='correct').length;const pwAcc=pw.length?Math.round(pwCor/pw.length*100):0;
+const dailyT={};tw.forEach(r=>{if(!dailyT[r.date])dailyT[r.date]={total:0,correct:0};dailyT[r.date].total++;if(r.result==='correct')dailyT[r.date].correct++});
+const newMastered=allQ.filter(q=>q.mastered&&q.last_practice_date>=weekAgo).length;
+const sessions=JSON.parse(localStorage.getItem('study_sessions')||'[]');
+const wSessions=sessions.filter(s=>s.date>=weekAgo);
+const totalMin=Math.round(wSessions.reduce((a,b)=>a+(b.duration_seconds||0),0)/60);
+const daysStudied=new Set(tw.map(r=>r.date)).size;
+if(tw.length===0){$('#reportCard').style.display='none';return}
+$('#reportCard').style.display='';
+let score=0;const commentary=[];
+if(daysStudied>=5){commentary.push('坚持天数优秀');score+=30}else if(daysStudied>=3){commentary.push('坚持天数良好');score+=15}else{commentary.push('本周练习天数偏少');score+=5}
+if(twAcc>=70){commentary.push('正确率较高');score+=25}else if(twAcc>=50){commentary.push('正确率中等');score+=15}else{commentary.push('正确率偏低，建议放慢节奏');score+=5}
+if(newMastered>=10){commentary.push(`新掌握${newMastered}题，进步显著`);score+=25}else if(newMastered>=5){commentary.push(`新掌握${newMastered}题，稳中有进`);score+=15}else{commentary.push('本周掌握进度偏慢');score+=5}
+if(twAcc>pwAcc&&pw.length>0){commentary.push('正确率较上周上升');score+=20}else if(pw.length>0){commentary.push('正确率与上周持平或略有下降');score+=10}else{score+=10}
+const grade=score>=80?'S':score>=60?'A':score>=40?'B':'C';
+$('#reportGrade').textContent=grade;$('#reportGrade').className='report-grade '+grade;
+$('#reportSummary').innerHTML=`<div class="rs-score">${score}分 · 等级 ${grade}</div>${commentary.map(c=>'<div>'+c+'</div>').join('')}`;
+const accCls=twAcc>=pwAcc?'up':'down';
+$('#reportStats').innerHTML=`<div class="rs-item"><div class="rs-val">${tw.length}</div><div class="rs-label">本周做题</div></div><div class="rs-item"><div class="rs-val ${accCls}">${twAcc}%</div><div class="rs-label">正确率</div></div><div class="rs-item"><div class="rs-val">${daysStudied}天</div><div class="rs-label">练习天数</div></div><div class="rs-item"><div class="rs-val">${totalMin}分</div><div class="rs-label">学习时长</div></div><div class="rs-item"><div class="rs-val">${newMastered}题</div><div class="rs-label">新掌握</div></div>`;
+// 最差章节和标签
+const wrongCh={};const wrongTag={};tw.filter(r=>r.result==='wrong').forEach(r=>{const q=allQ.find(q=>q.id===r.question_id);if(!q)return;const ch=q.chapter||'未分类';wrongCh[ch]=(wrongCh[ch]||0)+1;const tags=(q.knowledge_tags||'').split(',');tags.forEach(t=>{t=t.trim();if(t)wrongTag[t]=(wrongTag[t]||0)+1})});
+const topCh=Object.entries(wrongCh).sort((a,b)=>b[1]-a[1]).slice(0,3);
+const topTag=Object.entries(wrongTag).sort((a,b)=>b[1]-a[1]).slice(0,3);
+const worst=[];
+if(topCh.length)worst.push('薄弱章节：'+topCh.map(([k,v])=>k+'('+v+'次)').join('、'));
+if(topTag.length)worst.push('易错标签：'+topTag.map(([k,v])=>k+'('+v+'次)').join('、'));
+$('#reportWorst').innerHTML=worst.length?worst.map(w=>`<span>${w}</span>`).join(''):'';
+}
+
+async function loadGoalPlan(){
+const examDate=localStorage.getItem('exam_date');
+if(!examDate){$('#goalCard').style.display='none';return}
+const today=todayStr();const exam=new Date(examDate);const now=new Date(today);
+const remainingDays=Math.ceil((exam-now)/(86400000));
+if(remainingDays<=0){$('#goalUrgent').className='goal-urgent critical';$('#goalUrgent').innerHTML=`<div class="gu-big crit">已过期</div><div class="gu-msg">考试日期已过，请更新设置</div>`;return}
+const sq=tx('wrong_questions');const allQ=await prom(sq.getAll());
+const totalQ=allQ.length;const masteredQ=allQ.filter(q=>q.mastered).length;const remainingQ=totalQ-masteredQ;
+const overallPct=totalQ?Math.round(masteredQ/totalQ*100):0;
+if(remainingQ===0){$('#goalUrgent').className='goal-urgent relaxed';$('#goalUrgent').innerHTML=`<div class="gu-big relaxed">🎉</div><div class="gu-msg">所有错题已掌握！</div><div class="gu-sub">剩余 ${remainingDays} 天可用于模拟测试巩固</div>`;return}
+const dailyTarget=Math.round(remainingQ/remainingDays*10)/10;
+let lvl='relaxed',urgentMsg='';
+if(remainingDays<=7){lvl='critical';urgentMsg=`仅剩 ${remainingDays} 天！每天必须攻克 ${dailyTarget} 道题`}
+else if(remainingDays<=14){lvl='tight';urgentMsg=`时间紧迫，剩余 ${remainingDays} 天，每日需完成 ${dailyTarget} 题`}
+else if(remainingDays<=30){lvl='normal';urgentMsg=`时间充裕，每日 ${dailyTarget} 题即可在考试前攻克全部错题`}
+else{lvl='relaxed';urgentMsg=`时间充足，每日只需 ${dailyTarget} 题`}
+$('#goalUrgent').className='goal-urgent '+lvl;
+$('#goalUrgent').innerHTML=`<div class="gu-big ${lvl}">${remainingDays}天</div><div class="gu-msg">${urgentMsg}</div><div class="gu-sub">已掌握 ${overallPct}% · 剩余 ${remainingQ} 题 · 日均目标 ${dailyTarget} 题</div>`;
+// 里程碑
+const milestones=[];if(remainingDays>=30)milestones.push({date:(new Date(Date.now()+(remainingDays-30)*86400000)).toISOString().slice(0,10),targetPct:Math.round((masteredQ+dailyTarget*(remainingDays-30))/totalQ*100),label:'距考试30天'});if(remainingDays>=14)milestones.push({date:(new Date(Date.now()+(remainingDays-14)*86400000)).toISOString().slice(0,10),targetPct:Math.round((masteredQ+dailyTarget*(remainingDays-14))/totalQ*100),label:'距考试14天'});if(remainingDays>=7)milestones.push({date:(new Date(Date.now()+(remainingDays-7)*86400000)).toISOString().slice(0,10),targetPct:Math.round((masteredQ+dailyTarget*(remainingDays-7))/totalQ*100),label:'距考试7天'});
+if(milestones.length)$('#goalMilestones').innerHTML=milestones.map(m=>`<div class="gm-item"><div class="gm-date">${m.date.slice(5)}</div><div class="gm-pct">目标 ${m.targetPct}%</div><div>${m.label}</div></div>`).join('');
+// 章节计划
+const chMap={};allQ.forEach(q=>{const ch=q.chapter||'未分类';if(!chMap[ch])chMap[ch]={total:0,mastered:0};chMap[ch].total++;if(q.mastered)chMap[ch].mastered++});
+const chPlan=Object.entries(chMap).filter(([,d])=>d.total-d.mastered>0).map(([ch,d])=>({chapter:ch,total:d.total,mastered:d.mastered,remaining:d.total-d.mastered,masteryPct:Math.round(d.mastered/d.total*100),dailySugg:Math.max(1,Math.round(dailyTarget*(d.total-d.mastered)/remainingQ))})).sort((a,b)=>a.masteryPct-b.masteryPct);
+if(chPlan.length)$('#goalChapters').innerHTML=chPlan.slice(0,10).map(ch=>{const color=ch.masteryPct<30?'#ef4444':ch.masteryPct<60?'#f59e0b':'#10b981';return`<div class="gc-row"><span class="gc-name">${esc(ch.chapter)}</span><span class="gc-remain">${ch.mastered}/${ch.total}</span><div class="gc-bar"><div class="gc-fill" style="width:${ch.masteryPct}%;background:${color}"></div></div><span class="gc-daily">${ch.dailySugg}题/天</span></div>`}).join('');
+}
+
+async function loadTrends(){
+const sq=tx('wrong_questions');const all=await prom(sq.getAll());
+const prs=tx('practice_results');const results=await prom(prs.getAll());
+const today=todayStr();
+
+// 每日正确率趋势 (最近14天)
+const days=[];for(let i=13;i>=0;i--){const d=new Date(Date.now()-i*86400000);days.push(d.toISOString().slice(0,10))}
+const trendData=days.map(d=>{
+const dayR=results.filter(r=>r.date===d);
+const correct=dayR.filter(r=>r.result==='correct').length;
+const wrong=dayR.filter(r=>r.result==='wrong').length;
+return{label:d.slice(5),correct,wrong,total:correct+wrong,accuracy:correct+wrong>0?Math.round(correct/(correct+wrong)*100):0};
+});
+const maxT=Math.max(...trendData.map(d=>d.total),1);
+drawTrendChart('#trendCanvas',trendData,{maxBar:maxT,maxVal:maxT,labels:trendData.map(d=>d.label),showAccuracy:true});
+
+// 掌握进度趋势
+const datesWithPractice=[...new Set(results.map(r=>r.date))].sort();
+const masteryData=datesWithPractice.map(d=>{
+const qAtDate=all.filter(q=>q.date_added<=d).length;
+const mAtDate=all.filter(q=>q.mastered&&q.date_added<=d).length;
+return{label:d.slice(5),value:qAtDate>0?Math.round(mAtDate/qAtDate*100):0};
+});
+if(masteryData.length===0){const todayPct=all.length>0?Math.round(all.filter(q=>q.mastered).length/all.length*100):0;masteryData.push({label:today.slice(5),value:todayPct})}
+drawBarChart('#masteryCanvas',masteryData,{maxVal:100});
+
+// 每日学习时长
+const sessions=JSON.parse(localStorage.getItem('study_sessions')||'[]');
+const durData=days.map(d=>{
+const dayS=sessions.filter(s=>s.date===d);
+const min=Math.round(dayS.reduce((s,se)=>s+(se.duration_seconds||0),0)/60);
+return{label:d.slice(5),value:min};
+});
+const maxD=Math.max(...durData.map(d=>d.value),1);
+drawBarChart('#durationCanvas',durData,{maxVal:maxD});
+}
+
+async function loadPrediction(){
+const sq=tx('wrong_questions');const all=await prom(sq.getAll());
+const prs=tx('practice_results');const results=await prom(prs.getAll());
+const today=todayStr();
+const total=all.length;const mastered=all.filter(q=>q.mastered).length;const remaining=total-mastered;
+if(remaining===0){$('#predRow').innerHTML='<div class="pred-big" style="flex:1"><div class="pb-val success">🎉</div><div class="pb-label">全部掌握</div></div>';$('#predSuggestion').innerHTML='🎉 恭喜！所有错题已全部掌握！';return}
+// 近14天数据
+const fourteenDays=[];for(let i=13;i>=0;i--){const d=new Date(Date.now()-i*86400000);fourteenDays.push(d.toISOString().slice(0,10))}
+const recentResults=results.filter(r=>fourteenDays.includes(r.date));
+const practicingDays=new Set(recentResults.map(r=>r.date)).size;
+const dayGroup={};recentResults.forEach(r=>{if(!dayGroup[r.date])dayGroup[r.date]={practiced:new Set(),correct:0};dayGroup[r.date].practiced.add(r.question_id);if(r.result==='correct')dayGroup[r.date].correct++});
+const dailyAvg=practicingDays>0?Math.round(recentResults.length/practicingDays*10)/10:0;
+// 日均掌握：通过14天内的掌握变化估算
+const twoWeeksAgo=fourteenDays[0];
+const oldMastered=all.filter(q=>q.mastered&&q.date_added<=twoWeeksAgo).length;
+const dailyMastered=practicingDays>=2?Math.round((mastered-oldMastered)/practicingDays*10)/10:0;
+let predictedDays=-1;
+if(dailyMastered>0)predictedDays=Math.ceil(remaining/dailyMastered);
+else if(dailyAvg>0){const totalCorrect=recentResults.filter(r=>r.result==='correct').length;const acc=recentResults.length>0?totalCorrect/recentResults.length:0.5;const rate=dailyAvg*acc*0.5;if(rate>0)predictedDays=Math.ceil(remaining/rate)}
+let predDate='',predStr='';let trend='steady',trendLabel='稳步推进',trendIcon='✅';
+if(predictedDays>0){const pd=new Date(Date.now()+predictedDays*86400000);predDate=(pd.getMonth()+1)+'月'+pd.getDate()+'日';predStr='预计 '+predDate+'（约'+predictedDays+'天）可攻克全部 '+remaining+' 道错题'}
+else predStr='开始练习后即可生成预测数据';
+// 趋势判断
+const weekAgo=fourteenDays[8];const earlierResults=recentResults.filter(r=>r.date<weekAgo);const thisWeekResults=recentResults.filter(r=>r.date>=weekAgo);
+const prevDays=new Set(earlierResults.map(r=>r.date)).size;const thisDays=new Set(thisWeekResults.map(r=>r.date)).size;
+const prevAvg=prevDays>0?Math.round(earlierResults.length/prevDays*10)/10:0;
+const thisAvg=thisDays>0?Math.round(thisWeekResults.length/thisDays*10)/10:0;
+if(thisAvg>prevAvg*1.15){trend='accelerating';trendLabel='加速中';trendIcon='🚀'}else if(thisAvg<prevAvg*0.7&&prevAvg>0){trend='slowing';trendLabel='需加把劲';trendIcon='⚡'}
+const trendCls=trend==='accelerating'?'up':trend==='slowing'?'down':'steady';
+let msg=`<span class="pred-trend ${trendCls}">${trendIcon} ${trendLabel}</span> 按当前速度<span style="color:#2563eb;font-weight:700">日均掌握${dailyMastered||'?'}题</span>，${predStr}`;
+const neededPerDay=Math.round(remaining/30*10)/10;
+if(predictedDays>30&&dailyMastered>0)msg+=`<br>📌 若要在30天内完成，需日均攻克 <strong>${neededPerDay}</strong> 题（当前缺口 ${predictedDays-30} 天）`;
+$('#predRow').innerHTML=`<div class="pred-big"><div class="pb-val accent">${predDate||'--'}</div><div class="pb-label">预计完成日期</div></div><div class="pred-big"><div class="pb-val">${predictedDays>0?predictedDays+'天':'--'}</div><div class="pb-label">预计还需</div></div><div class="pred-big"><div class="pb-val warn">${remaining}</div><div class="pb-label">剩余题数</div></div><div class="pred-big"><div class="pb-val">${dailyAvg}题</div><div class="pb-label">日均做题</div></div>`;
+$('#predSuggestion').innerHTML=msg;
+// 章节预测
+const chMap={};all.forEach(q=>{const ch=q.chapter||'未分类';if(!chMap[ch])chMap[ch]={total:0,mastered:0};chMap[ch].total++;if(q.mastered)chMap[ch].mastered++});
+const chPred=Object.entries(chMap).filter(([,d])=>(d.total-d.mastered)>0).map(([ch,d])=>{const rate=dailyMastered>0?dailyMastered:(dailyAvg>0?dailyAvg*0.3:1);return{chapter:ch,total:d.total,mastered:d.mastered,remaining:d.total-d.mastered,predDays:Math.ceil((d.total-d.mastered)/rate)}});
+if(chPred.length>0){$('#predChapters').style.display='';$('#predChList').innerHTML=chPred.slice(0,6).map(ch=>{const pct=Math.round(ch.mastered/ch.total*100);const pd=new Date(Date.now()+ch.predDays*86400000);return`<div class="pred-ch"><span class="pch-name">${esc(ch.chapter)}</span><div class="pch-bar"><div class="pch-fill" style="width:${pct}%"></div></div><span class="pch-date">${(pd.getMonth()+1)}月${pd.getDate()}日</span></div>`}).join('')}}
+
+async function loadDeepAnalysis(){
+const sq=tx('wrong_questions');const allQ=await prom(sq.getAll());
+const prs=tx('practice_results');const allPR=await prom(prs.getAll());
+const allSS=JSON.parse(localStorage.getItem('study_sessions')||'[]');
+allSS.sort((a,b)=>new Date(a.start_time)-new Date(b.start_time));
+const totalQ=allQ.length;
+const masteredQ=allQ.filter(q=>q.mastered).length;
+const remainingQ=totalQ-masteredQ;
+if(totalQ===0){$('#deepAnalysis').style.display='none';return}
+$('#deepAnalysis').style.display='';
+
+// 模块1：交叉诊断
+const crossMatrix={};const errorByCh={};
+allQ.forEach(q=>{const ch=q.chapter||'未分类';const et=q.error_type||'unknown';const diff=q.difficulty||'unknown';
+if(!crossMatrix[ch])crossMatrix[ch]={};const k=et+'|'+diff;if(!crossMatrix[ch][k])crossMatrix[ch][k]={total:0,mastered:0,wrongSum:0};
+crossMatrix[ch][k].total++;crossMatrix[ch][k].wrongSum+=q.wrong_count;if(q.mastered)crossMatrix[ch][k].mastered++;
+if(et!=='unknown'){if(!errorByCh[ch])errorByCh[ch]={};errorByCh[ch][et]=(errorByCh[ch][et]||0)+1}});
+const dims=[];Object.entries(crossMatrix).forEach(([ch,ets])=>{Object.entries(ets).forEach(([k,d])=>{if(d.total>=2){const[et,diff]=k.split('|');
+const pct=Math.round(d.mastered/d.total*100);const sev=pct<30?'critical':pct<60?'warning':'ok';
+dims.push({chapter:ch,error_type:et,error_label:ETYPES[et]||et,difficulty:diff,total:d.total,mastered:d.mastered,mastery_pct:pct,avg_wrong:Math.round(d.wrongSum/d.total*10)/10,severity:sev})}})});
+dims.sort((a,b)=>a.mastery_pct-b.mastery_pct);
+const critDims=dims.filter(d=>d.severity==='critical');const warnDims=dims.filter(d=>d.severity==='warning');
+const crossFindings=[];
+if(critDims.length){const d=critDims[0];crossFindings.push(`最致命弱点：【${d.chapter}】${d.difficulty}难度的${d.error_label}题掌握率仅${d.mastery_pct}%，需优先攻坚`)}
+if(warnDims.length&&!critDims.length){const d=warnDims[0];crossFindings.push(`需重点关注：【${d.chapter}】${d.difficulty}难度的${d.error_label}题掌握率${d.mastery_pct}%，容易反复出错`)}
+$('#crossFindings').innerHTML=crossFindings.map(f=>`<div class="cf-item">⚠ ${f}</div>`).join('');
+$('#crossTbody').innerHTML=dims.length?dims.slice(0,20).map(d=>{const sevBadge=d.severity==='critical'?'<span class="badge critical">严重</span>':d.severity==='warning'?'<span class="badge warning">关注</span>':'<span class="badge ok">正常</span>';
+const color=d.mastery_pct>=70?'#10b981':d.mastery_pct>=40?'#f59e0b':'#ef4444';
+return`<tr><td>${esc(d.chapter)}</td><td>${esc(d.difficulty)}</td><td>${esc(d.error_label)}</td><td>${d.total}</td><td style="color:${color};font-weight:700">${d.mastery_pct}%</td><td>${sevBadge}</td></tr>`}).join(''):'<tr><td colspan="6" class="empty">暂无交叉数据</td></tr>';
+
+// 模块2：遗忘曲线
+const prByQ={};allPR.forEach(p=>{if(!prByQ[p.question_id])prByQ[p.question_id]=[];prByQ[p.question_id].push(p)});
+const regressed=[];const forgetIntervals=[];const forgetByCh={};const forgetByTag={};
+allQ.forEach(q=>{const recs=(prByQ[q.id]||[]).sort((a,b)=>a.date.localeCompare(b.date));if(!recs.length)return;
+let consec=0,masteredDate=null;
+for(let i=0;i<recs.length;i++){if(recs[i].result==='correct')consec++;else consec=0;
+if(consec>=1){masteredDate=recs[i].date;
+for(let j=i+1;j<recs.length;j++){if(recs[j].result==='wrong'){
+const d1=new Date(masteredDate);const d2=new Date(recs[j].date);const days=Math.round((d2-d1)/(86400000));
+regressed.push({question_number:q.question_number,chapter:q.chapter||'未分类',section:q.section||'',mastered_date:masteredDate,forgot_date:recs[j].date,days_to_forget:days,error_type:q.error_type||'unknown',knowledge_tags:(q.knowledge_tags||'').split(',').filter(Boolean)});
+forgetIntervals.push(days);forgetByCh[q.chapter||'未分类']=(forgetByCh[q.chapter||'未分类']||0)+1;
+regressed[regressed.length-1].knowledge_tags.forEach(t=>{if(t.trim())forgetByTag[t.trim()]=(forgetByTag[t.trim()]||0)+1});
+break}}break}}});
+const regRate=Math.round(regressed.length/totalQ*1000)/10;
+const intvBins={'1-3天':0,'4-7天':0,'8-14天':0,'15-30天':0,'30天以上':0};
+forgetIntervals.forEach(d=>{if(d<=3)intvBins['1-3天']++;else if(d<=7)intvBins['4-7天']++;else if(d<=14)intvBins['8-14天']++;else if(d<=30)intvBins['15-30天']++;else intvBins['30天以上']++});
+const curveData=[];if(forgetIntervals.length>0){const maxInt=Math.max(...forgetIntervals);
+for(let day=1;day<=Math.min(maxInt,30);day++){const ok=forgetIntervals.filter(d=>d>day).length;curveData.push({days:day,retention:Math.round(ok/forgetIntervals.length*100)})}}
+$('#fcRegressed').textContent=regressed.length+'题';$('#fcRate').textContent=regRate+'%';
+if(curveData.length>0){const cv=$('#forgetCanvas')[0];if(cv){const ctx=cv.getContext('2d');const dpr=window.devicePixelRatio||1;
+const rect=cv.parentElement.getBoundingClientRect();cv.width=rect.width*dpr;cv.height=120*dpr;ctx.scale(dpr,dpr);
+const w=rect.width-20,h=100;ctx.clearRect(0,0,w+20,h+20);
+ctx.strokeStyle='#6366f1';ctx.lineWidth=1.5;ctx.beginPath();
+for(let i=0;i<curveData.length;i++){const x=10+i*(w/curveData.length);const y=10+(h-10)*(1-curveData[i].retention/100);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y)}ctx.stroke();
+ctx.globalAlpha=0.15;ctx.lineTo(10+curveData.length*(w/curveData.length),h+10);ctx.lineTo(10,h+10);ctx.closePath();ctx.fill();ctx.globalAlpha=1;
+ctx.fillStyle='#6366f1';curveData.forEach((p,i)=>{const x=10+i*(w/curveData.length);const y=10+(h-10)*(1-p.retention/100);ctx.beginPath();ctx.arc(x,y,2.5,0,Math.PI*2);ctx.fill()});
+ctx.fillStyle='#9ca3af';ctx.textAlign='right';[100,75,50,25].forEach(v=>{const y=10+(h-10)*(1-v/100);ctx.fillText(v+'%',w+14,y+4)});}}
+$('#fcIntervals').innerHTML=Object.entries(intvBins).map(([k,v])=>`<div class="intv"><div class="iv">${v}题</div><div class="il">${k}</div></div>`).join('');
+const fcChs=Object.entries(forgetByCh).map(([k,v])=>({chapter:k,count:v})).sort((a,b)=>b.count-a.count);
+const maxFc=Math.max(...fcChs.map(c=>c.count),1);
+$('#fcChapters').innerHTML=fcChs.length?`<div class="fc-chbars">${fcChs.slice(0,5).map(c=>`<div class="fc-chb"><span class="fcc-name">${esc(c.chapter)}</span><div class="fcc-bar"><div class="fcc-fill" style="width:${c.count/maxFc*100}%"></div></div><span class="fcc-n">${c.count}</span></div>`).join('')}</div>`:'<div style="color:var(--t2);font-size:.65rem">无</div>';
+const fcTgs=Object.entries(forgetByTag).map(([k,v])=>({tag:k,count:v})).sort((a,b)=>b.count-a.count).slice(0,10);
+$('#fcTags').innerHTML=fcTgs.length?`<div class="fc-tags">${fcTgs.map(t=>`<span class="fct">${esc(t.tag)} ${t.count}</span>`).join('')}</div>`:'<div style="color:var(--t2);font-size:.65rem">无</div>';
+$('#fcList').innerHTML=regressed.length?regressed.slice(0,10).map(r=>`<li><span class="fc-qn">${esc(r.question_number)}</span><span class="fc-ch">${esc(r.chapter)}</span><span class="fc-days">${r.days_to_forget}天</span></li>`).join(''):'<li style="color:var(--t2)">暂无回生题目</li>';
+
+// 模块3：效率画像
+const sessions=allSS.map(s=>{const dateStr=s.date||s.start_time.slice(0,10);
+const dayPR=allPR.filter(p=>p.date===dateStr);const dayCor=dayPR.filter(p=>p.result==='correct').length;
+const dayAcc=dayPR.length?Math.round(dayCor/dayPR.length*100):0;
+let hour=0;try{hour=new Date(s.start_time).getHours()}catch(e){}
+const min=Math.max(s.duration_seconds/60,0.5);const speed=Math.round(s.question_count/min*10)/10;
+const focus=s.duration_seconds>=1800&&dayAcc>=60?'high':s.duration_seconds>=600?'medium':'low';
+const period=hour>=6&&hour<12?'早上':hour>=12&&hour<18?'下午':hour>=18&&hour<24?'晚上':'凌晨';
+return{date:dateStr,duration_minutes:Math.round(min),question_count:s.question_count,accuracy:dayAcc,speed,hour,time_period:period,focus}});
+const totalMin=sessions.reduce((a,b)=>a+b.duration_minutes,0);
+const avgQ=Math.round(sessions.reduce((a,b)=>a+b.question_count,0)/Math.max(sessions.length,1));
+let effTrend='insufficient_data',earlyAcc=0,lateAcc=0,earlySpeed=0,lateSpeed=0;
+if(sessions.length>=4){const half=Math.floor(sessions.length/2);const ea=sessions.slice(0,half);const la=sessions.slice(half);
+earlyAcc=Math.round(ea.reduce((a,b)=>a+b.accuracy,0)/ea.length);lateAcc=Math.round(la.reduce((a,b)=>a+b.accuracy,0)/la.length);
+earlySpeed=Math.round(ea.reduce((a,b)=>a+b.speed,0)/ea.length*10)/10;lateSpeed=Math.round(la.reduce((a,b)=>a+b.speed,0)/la.length*10)/10;
+effTrend=lateAcc>=earlyAcc*1.05?'improving':lateAcc<earlyAcc*0.9?'declining':'stable'}
+const perMap={};sessions.forEach(s=>{const p=s.time_period;if(!perMap[p])perMap[p]={sessions:0,totalAcc:0,totalSpeed:0,totalQ:0};perMap[p].sessions++;perMap[p].totalAcc+=s.accuracy;perMap[p].totalSpeed+=s.speed;perMap[p].totalQ+=s.question_count});
+const periods=Object.entries(perMap).map(([k,v])=>({period:k,sessions:v.sessions,avg_accuracy:Math.round(v.totalAcc/v.sessions),avg_speed:Math.round(v.totalSpeed/v.sessions*10)/10,total_questions:v.totalQ})).sort((a,b)=>b.avg_accuracy-a.avg_accuracy);
+$('#effTotalMin').textContent=totalMin||'0';$('#effAvgQ').textContent=avgQ||'0';
+const tLabel=effTrend==='improving'?'上升中':effTrend==='declining'?'需关注':'稳定';
+const tColor=effTrend==='improving'?'green':effTrend==='declining'?'red':'amber';
+$('#effTrend').innerHTML=`<span class="eff-val ${tColor}">${tLabel}</span>`;
+$('#effBest').textContent=periods.length?periods[0].period:'--';
+if(effTrend!=='insufficient_data'){$('#effCompare').style.display='';$('#effAccCmp').textContent=earlyAcc+'% → '+lateAcc+'%';$('#effSpeedCmp').textContent=earlySpeed+' → '+lateSpeed+' 题/分钟'}else{$('#effCompare').style.display='none'}
+const maxAcc=Math.max(...periods.map(p=>p.avg_accuracy),1);
+$('#effPeriods').innerHTML=periods.length?'<h4 style="font-size:.75rem;font-weight:600;color:var(--t2);margin-bottom:4px">各时段表现</h4>'+periods.map(p=>`<div class="ep-row"><span class="ep-name">${p.period}</span><div class="ep-bar-bg"><div class="ep-bar-fill" style="width:${p.avg_accuracy/maxAcc*100}%;background:${p.avg_accuracy>=70?'#10b981':'#6366f1'}"></div></div><span class="ep-acc">${p.avg_accuracy}%</span><span style="font-size:.6rem;color:var(--t2)">${p.sessions}次</span></div>`).join(''):'暂无时段数据';
+
+// 模块4：周计划
+const chMap={};allQ.forEach(q=>{const ch=q.chapter||'未分类';if(!chMap[ch])chMap[ch]={total:0,mastered:0,wrongSum:0};chMap[ch].total++;chMap[ch].wrongSum+=q.wrong_count;if(q.mastered)chMap[ch].mastered++});
+const chMastery=Object.entries(chMap).map(([ch,d])=>({chapter:ch,total:d.total,mastered:d.mastered,remaining:d.total-d.mastered,mastery_pct:Math.round(d.mastered/d.total*100),avg_wrong:Math.round(d.wrongSum/d.total*10)/10})).sort((a,b)=>a.mastery_pct-b.mastery_pct);
+const weakChs=chMastery.filter(c=>c.remaining>0&&c.mastery_pct<70);
+const strongChs=chMastery.filter(c=>c.remaining===0&&c.total>0);
+const dailyCount=parseInt(localStorage.getItem('dailyCount')||'15');
+const weekdays=['周一','周二','周三','周四','周五','周六','周日'];
+const focusChs=weakChs.slice(0,6);
+const planDays=[];
+for(let i=0;i<7;i++){if(i<focusChs.length){const ch=focusChs[i];const chErrs=errorByCh[ch.chapter]||{};const topErr=Object.entries(chErrs).sort((a,b)=>b[1]-a[1])[0];const errLabel=topErr?(ETYPES[topErr[0]]||topErr[0]):'综合';
+planDays.push({day:weekdays[i],chapter:ch.chapter,question_count:Math.min(dailyCount,Math.max(8,ch.remaining)),mastery_pct:ch.mastery_pct,remaining:ch.remaining,focus_error:errLabel,tips:'重点排查'+errLabel+'类题目，每题复盘错误根源',type:'weak'})}
+else if(i<6&&strongChs.length){const ch=strongChs[i%strongChs.length];planDays.push({day:weekdays[i],chapter:ch.chapter,question_count:Math.min(Math.floor(dailyCount/2),8),mastery_pct:ch.mastery_pct,remaining:0,focus_error:'综合复习',tips:'已掌握章节回顾巩固，防止遗忘',type:'review'})}
+else if(remainingQ>0&&!weakChs.length&&!strongChs.length){planDays.push({day:weekdays[i],chapter:'全部章节',question_count:dailyCount,mastery_pct:0,remaining:remainingQ,focus_error:'综合复习',tips:'均衡练习各章节',type:'balanced'})}
+else{planDays.push({day:weekdays[i],chapter:'-',question_count:0,mastery_pct:0,remaining:0,focus_error:'休息日',tips:'保持复习节奏即可',type:'rest'})}}
+$('#planTarget').textContent=`本周计划攻克 ${planDays.reduce((a,b)=>a+b.question_count,0)} 题，重点突破${focusChs.length}个薄弱章节`;
+$('#planDays').innerHTML=planDays.map(d=>{const cls=d.type==='weak'?'weak':d.type==='review'?'review':d.type==='rest'?'rest':'';const qText=d.question_count>0?`${d.question_count}题`:d.type==='rest'?'休息':'';
+return`<div class="plan-day ${cls}"><div class="pd-day">${d.day}</div><div class="pd-ch">${esc(d.chapter)}</div><div class="pd-count">${qText}</div><div class="pd-focus">${esc(d.focus_error)}</div><div class="pd-tips">${esc(d.tips)}</div></div>`}).join('');
+}
+
+async function exportData(){
+const sq=tx('wrong_questions'),prs=tx('practice_results'),dp=tx('daily_practice');
+const[qAll,rAll,dAll]=await Promise.all([prom(sq.getAll()),prom(prs.getAll()),prom(dp.getAll())]);
+const data={version:1,exported_at:new Date().toISOString(),wrong_questions:qAll,practice_results:rAll,daily_practice:dAll};
+const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='错题库备份_'+todayStr()+'.json';a.click();
+toast('备份下载成功','ok');
+}
+
+function importData(){document.getElementById('importFileInput').click()}
+async function handleImport(event){
+const f=event.target.files[0];if(!f)return;
+try{
+const text=await new Promise((r,j)=>{const rd=new FileReader();rd.onload=e=>r(e.target.result);rd.onerror=j;rd.readAsText(f)});
+const data=JSON.parse(text);
+if(!data.wrong_questions||!Array.isArray(data.wrong_questions)){toast('格式不正确','err');return}
+if(!confirm(`将导入 ${data.wrong_questions.length} 道错题 + ${(data.practice_results||[]).length} 条练习记录，可能覆盖现有数据。确定？`))return;
+await bulkPut('wrong_questions',data.wrong_questions);
+if(data.practice_results)await bulkPut('practice_results',data.practice_results);
+if(data.daily_practice)await bulkPut('daily_practice',data.daily_practice);
+toast('导入成功','ok');refreshStats();
+}catch(e){toast('文件解析失败','err')}
+}
+
+// ═══════════════════════════════════════════════
+// 服务器同步
+// ═══════════════════════════════════════════════
+function getSyncUrl(){return $('#setSyncUrl').value.trim()||'http://127.0.0.1:5000'}
+async function syncDownload(){
+    const base=getSyncUrl();
+    $('#syncStatus').textContent='正在连接服务器...';
+    try{
+        const resp=await fetch(base+'/api/sync/export');
+        if(!resp.ok)throw new Error('服务器响应: '+resp.status);
+        const data=await resp.json();
+        if(!data.wrong_questions||!Array.isArray(data.wrong_questions))throw new Error('数据格式不正确');
+        if(!confirm('将从服务器下载 '+data.wrong_questions.length+' 道错题 + '+(data.practice_results||[]).length+' 条练习记录，合并到本地。确定？'))return;
+        $('#syncStatus').textContent='正在合并数据...';
+        // 合并错题（按章节+小节+题号去重）
+        const sq=tx('wrong_questions','readonly');
+        const existing=await prom(sq.getAll());
+        const toPut=[],toAdd=[];
+        for(const item of data.wrong_questions){
+            const dup=existing.find(e=>e.question_number===item.question_number&&e.chapter===item.chapter&&e.section===item.section);
+            if(dup){Object.assign(dup,item,{id:dup.id});toPut.push(dup)}
+            else{const{id,...rest}=item;toAdd.push(rest)}
+        }
+        if(toPut.length)await bulkPut('wrong_questions',toPut);
+        for(const it of toAdd){const ws=tx('wrong_questions','readwrite');await prom(ws.add(it))}
+        if(data.practice_results&&data.practice_results.length){
+            const prs=tx('practice_results','readonly');
+            const prExist=await prom(prs.getAll());
+            const prAdd=[];
+            for(const r of data.practice_results){
+                if(!prExist.find(e=>e.question_id===r.question_id&&e.date===r.date&&e.result===r.result))prAdd.push(r)
+            }
+            if(prAdd.length)await bulkPut('practice_results',prAdd)
+        }
+        if(data.daily_practice&&data.daily_practice.length){
+            const dp=tx('daily_practice','readonly');
+            const dpExist=await prom(dp.getAll());
+            const dpAdd=[];
+            for(const d of data.daily_practice){
+                if(!dpExist.find(e=>e.date===d.date))dpAdd.push(d)
+            }
+            if(dpAdd.length)await bulkPut('daily_practice',dpAdd)
+        }
+        $('#syncStatus').textContent='下载完成！新增/更新 '+data.wrong_questions.length+' 题';
+        toast('同步下载完成','ok');refreshStats();
+    }catch(e){
+        $('#syncStatus').textContent='下载失败: '+e.message;
+        toast('同步失败，请确认服务器已启动','err')
+    }
+}
+async function syncUpload(){
+    const base=getSyncUrl();
+    $('#syncStatus').textContent='正在准备数据...';
+    try{
+        const sq=tx('wrong_questions'),prs=tx('practice_results'),dp=tx('daily_practice');
+        const[qAll,rAll,dAll]=await Promise.all([prom(sq.getAll()),prom(prs.getAll()),prom(dp.getAll())]);
+        const payload={version:1,wrong_questions:qAll,practice_results:rAll,daily_practice:dAll};
+        $('#syncStatus').textContent='正在上传 '+qAll.length+' 题...';
+        const resp=await fetch(base+'/api/sync/import',{
+            method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify(payload)
+        });
+        const result=await resp.json();
+        if(result.ok){
+            $('#syncStatus').textContent='上传完成！新增 '+result.questions_imported+' 题，更新 '+result.questions_updated+' 题';
+            toast('同步上传完成','ok')
+        }else{
+            throw new Error(result.error||'上传失败')
+        }
+    }catch(e){
+        $('#syncStatus').textContent='上传失败: '+e.message;
+        toast('同步失败，请确认服务器已启动','err')
+    }
+}
+
+// ═══════════════════════════════════════════════
+// 刷新统计
+// ═══════════════════════════════════════════════
+async function refreshStats(){
+const sq=tx('wrong_questions');
+const all=await prom(sq.getAll());
+const mastered=all.filter(q=>q.mastered).length;
+$('#stRemain').textContent=all.length-mastered;
+$('#stMastered').textContent=mastered;
+const prs=tx('practice_results');
+const results=await prom(prs.getAll());
+const todayRes=results.filter(r=>r.date===todayStr());
+$('#stToday').textContent=new Set(todayRes.map(r=>r.question_id)).size;
+}
+
+// ═══════════════════════════════════════════════
+// 初始化
+// ═══════════════════════════════════════════════
+
+// === 预置数据（从服务器导出） ===
+const SEED_QUESTIONS=[{"id": 2, "question_number": "1.3", "chapter": "U1 单元", "section": "讲义例题", "source": "U1 单元", "note": "", "wrong_count": 3, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 1, "mastered": 0, "last_practice_date": "2026-06-05", "error_type": ""}, {"id": 3, "question_number": "1.6", "chapter": "U1 单元", "section": "讲义例题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 4, "question_number": "1.12", "chapter": "U1 单元", "section": "讲义例题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 5, "question_number": "1.25", "chapter": "U1 单元", "section": "讲义例题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 6, "question_number": "1.26", "chapter": "U1 单元", "section": "讲义例题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 7, "question_number": "1.28", "chapter": "U1 单元", "section": "讲义例题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 8, "question_number": "1.37", "chapter": "U1 单元", "section": "讲义例题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 9, "question_number": "1.3", "chapter": "U1 单元", "section": "课后例题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 10, "question_number": "1.4", "chapter": "U1 单元", "section": "课后例题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 11, "question_number": "1.5", "chapter": "U1 单元", "section": "课后例题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 12, "question_number": "1.12", "chapter": "U1 单元", "section": "课后例题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 13, "question_number": "1.13", "chapter": "U1 单元", "section": "课后例题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 14, "question_number": "1.14", "chapter": "U1 单元", "section": "课后例题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 15, "question_number": "9", "chapter": "U1 单元", "section": "练习题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 16, "question_number": "11", "chapter": "U1 单元", "section": "练习题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 17, "question_number": "13", "chapter": "U1 单元", "section": "练习题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 18, "question_number": "14", "chapter": "U1 单元", "section": "练习题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 19, "question_number": "15", "chapter": "U1 单元", "section": "练习题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 20, "question_number": "16", "chapter": "U1 单元", "section": "练习题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 21, "question_number": "17", "chapter": "U1 单元", "section": "练习题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 22, "question_number": "18", "chapter": "U1 单元", "section": "练习题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 23, "question_number": "19", "chapter": "U1 单元", "section": "练习题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 24, "question_number": "20", "chapter": "U1 单元", "section": "练习题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 25, "question_number": "21", "chapter": "U1 单元", "section": "练习题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 26, "question_number": "22", "chapter": "U1 单元", "section": "练习题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 27, "question_number": "23", "chapter": "U1 单元", "section": "练习题", "source": "U1 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 1, "mastered": 0, "last_practice_date": "2026-06-05", "error_type": ""}, {"id": 28, "question_number": "2.1", "chapter": "U2 单元", "section": "讲义例题", "source": "U2 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 29, "question_number": "2.4", "chapter": "U2 单元", "section": "讲义例题", "source": "U2 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 30, "question_number": "2.5", "chapter": "U2 单元", "section": "讲义例题", "source": "U2 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 31, "question_number": "2.6", "chapter": "U2 单元", "section": "讲义例题", "source": "U2 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 32, "question_number": "2.7", "chapter": "U2 单元", "section": "讲义例题", "source": "U2 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 33, "question_number": "2.10", "chapter": "U2 单元", "section": "讲义例题", "source": "U2 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 34, "question_number": "2.11", "chapter": "U2 单元", "section": "讲义例题", "source": "U2 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 35, "question_number": "2.12", "chapter": "U2 单元", "section": "讲义例题", "source": "U2 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 36, "question_number": "2.14", "chapter": "U2 单元", "section": "讲义例题", "source": "U2 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 37, "question_number": "2.15", "chapter": "U2 单元", "section": "讲义例题", "source": "U2 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 38, "question_number": "2.18", "chapter": "U2 单元", "section": "讲义例题", "source": "U2 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 39, "question_number": "2.2", "chapter": "U2 单元", "section": "课后例题", "source": "U2 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 40, "question_number": "2.3", "chapter": "U2 单元", "section": "课后例题", "source": "U2 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 41, "question_number": "2.4", "chapter": "U2 单元", "section": "课后例题", "source": "U2 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 42, "question_number": "2.7", "chapter": "U2 单元", "section": "课后例题", "source": "U2 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 43, "question_number": "2.8", "chapter": "U2 单元", "section": "课后例题", "source": "U2 单元", "note": "", "wrong_count": 2, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 44, "question_number": "1", "chapter": "U2 单元", "section": "练习题", "source": "U2 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 45, "question_number": "2", "chapter": "U2 单元", "section": "练习题", "source": "U2 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 46, "question_number": "3", "chapter": "U2 单元", "section": "练习题", "source": "U2 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 47, "question_number": "4", "chapter": "U2 单元", "section": "练习题", "source": "U2 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 48, "question_number": "6", "chapter": "U2 单元", "section": "练习题", "source": "U2 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 49, "question_number": "7", "chapter": "U2 单元", "section": "练习题", "source": "U2 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 50, "question_number": "9", "chapter": "U2 单元", "section": "练习题", "source": "U2 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 51, "question_number": "3.2", "chapter": "U3 单元", "section": "讲义例题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 52, "question_number": "3.3", "chapter": "U3 单元", "section": "讲义例题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 53, "question_number": "3.5", "chapter": "U3 单元", "section": "讲义例题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 54, "question_number": "3.6", "chapter": "U3 单元", "section": "讲义例题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 55, "question_number": "3.8", "chapter": "U3 单元", "section": "讲义例题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 56, "question_number": "3.9", "chapter": "U3 单元", "section": "讲义例题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 57, "question_number": "3.10", "chapter": "U3 单元", "section": "讲义例题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 58, "question_number": "3.11", "chapter": "U3 单元", "section": "讲义例题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 59, "question_number": "3.5", "chapter": "U3 单元", "section": "课后例题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 60, "question_number": "3.6", "chapter": "U3 单元", "section": "课后例题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 61, "question_number": "3.7", "chapter": "U3 单元", "section": "课后例题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 62, "question_number": "3.8", "chapter": "U3 单元", "section": "课后例题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 63, "question_number": "3.9", "chapter": "U3 单元", "section": "课后例题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 64, "question_number": "1", "chapter": "U3 单元", "section": "练习题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 65, "question_number": "2", "chapter": "U3 单元", "section": "练习题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 66, "question_number": "3", "chapter": "U3 单元", "section": "练习题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 67, "question_number": "5", "chapter": "U3 单元", "section": "练习题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 68, "question_number": "6", "chapter": "U3 单元", "section": "练习题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 69, "question_number": "8", "chapter": "U3 单元", "section": "练习题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 70, "question_number": "9", "chapter": "U3 单元", "section": "练习题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 71, "question_number": "10", "chapter": "U3 单元", "section": "练习题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 72, "question_number": "12", "chapter": "U3 单元", "section": "练习题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 73, "question_number": "13", "chapter": "U3 单元", "section": "练习题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 74, "question_number": "15", "chapter": "U3 单元", "section": "练习题", "source": "U3 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 75, "question_number": "4.2", "chapter": "U4 单元", "section": "讲义例题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 76, "question_number": "4.4", "chapter": "U4 单元", "section": "讲义例题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 77, "question_number": "4.6", "chapter": "U4 单元", "section": "讲义例题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 78, "question_number": "4.9", "chapter": "U4 单元", "section": "讲义例题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 79, "question_number": "4.10", "chapter": "U4 单元", "section": "讲义例题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 80, "question_number": "4.14", "chapter": "U4 单元", "section": "讲义例题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 81, "question_number": "4.16", "chapter": "U4 单元", "section": "讲义例题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 82, "question_number": "4.18", "chapter": "U4 单元", "section": "讲义例题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 83, "question_number": "4.19", "chapter": "U4 单元", "section": "讲义例题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 84, "question_number": "4.2", "chapter": "U4 单元", "section": "课后例题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 85, "question_number": "4.4", "chapter": "U4 单元", "section": "课后例题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 86, "question_number": "4.5", "chapter": "U4 单元", "section": "课后例题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 87, "question_number": "4.7", "chapter": "U4 单元", "section": "课后例题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 88, "question_number": "4.8", "chapter": "U4 单元", "section": "课后例题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 89, "question_number": "3", "chapter": "U4 单元", "section": "练习题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 90, "question_number": "4", "chapter": "U4 单元", "section": "练习题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 91, "question_number": "5", "chapter": "U4 单元", "section": "练习题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 92, "question_number": "8", "chapter": "U4 单元", "section": "练习题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 93, "question_number": "9", "chapter": "U4 单元", "section": "练习题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 94, "question_number": "11", "chapter": "U4 单元", "section": "练习题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 95, "question_number": "12", "chapter": "U4 单元", "section": "练习题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 96, "question_number": "16", "chapter": "U4 单元", "section": "练习题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 97, "question_number": "17", "chapter": "U4 单元", "section": "练习题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 98, "question_number": "18", "chapter": "U4 单元", "section": "练习题", "source": "U4 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 99, "question_number": "5.1", "chapter": "U5 单元", "section": "讲义例题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 100, "question_number": "5.2", "chapter": "U5 单元", "section": "讲义例题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 101, "question_number": "5.3", "chapter": "U5 单元", "section": "讲义例题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 102, "question_number": "5.4", "chapter": "U5 单元", "section": "讲义例题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 103, "question_number": "5.5", "chapter": "U5 单元", "section": "讲义例题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 104, "question_number": "5.6", "chapter": "U5 单元", "section": "讲义例题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 105, "question_number": "5.9", "chapter": "U5 单元", "section": "讲义例题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 106, "question_number": "5.11", "chapter": "U5 单元", "section": "讲义例题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 107, "question_number": "5.12", "chapter": "U5 单元", "section": "讲义例题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 108, "question_number": "5.13", "chapter": "U5 单元", "section": "讲义例题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 109, "question_number": "5.14", "chapter": "U5 单元", "section": "讲义例题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 110, "question_number": "5.1", "chapter": "U5 单元", "section": "课后例题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 111, "question_number": "5.2", "chapter": "U5 单元", "section": "课后例题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 112, "question_number": "5.4", "chapter": "U5 单元", "section": "课后例题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 113, "question_number": "5.7", "chapter": "U5 单元", "section": "课后例题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 114, "question_number": "5.9", "chapter": "U5 单元", "section": "课后例题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 115, "question_number": "3", "chapter": "U5 单元", "section": "练习题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 116, "question_number": "5", "chapter": "U5 单元", "section": "练习题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 117, "question_number": "8", "chapter": "U5 单元", "section": "练习题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 118, "question_number": "11", "chapter": "U5 单元", "section": "练习题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 119, "question_number": "12", "chapter": "U5 单元", "section": "练习题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 120, "question_number": "14", "chapter": "U5 单元", "section": "练习题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 121, "question_number": "16", "chapter": "U5 单元", "section": "练习题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 122, "question_number": "22", "chapter": "U5 单元", "section": "练习题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 123, "question_number": "23", "chapter": "U5 单元", "section": "练习题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 124, "question_number": "24", "chapter": "U5 单元", "section": "练习题", "source": "U5 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 125, "question_number": "6.10", "chapter": "U6 单元", "section": "讲义例题", "source": "U6 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 126, "question_number": "6.20", "chapter": "U6 单元", "section": "讲义例题", "source": "U6 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 127, "question_number": "6.4", "chapter": "U6 单元", "section": "课后例题", "source": "U6 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 128, "question_number": "6.6", "chapter": "U6 单元", "section": "课后例题", "source": "U6 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 129, "question_number": "6.7", "chapter": "U6 单元", "section": "课后例题", "source": "U6 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 130, "question_number": "6.8", "chapter": "U6 单元", "section": "课后例题", "source": "U6 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 131, "question_number": "6.10", "chapter": "U6 单元", "section": "课后例题", "source": "U6 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 132, "question_number": "5", "chapter": "U6 单元", "section": "练习题", "source": "U6 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 133, "question_number": "6", "chapter": "U6 单元", "section": "练习题", "source": "U6 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 134, "question_number": "7", "chapter": "U6 单元", "section": "练习题", "source": "U6 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 135, "question_number": "9", "chapter": "U6 单元", "section": "练习题", "source": "U6 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 136, "question_number": "10", "chapter": "U6 单元", "section": "练习题", "source": "U6 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 137, "question_number": "11", "chapter": "U6 单元", "section": "练习题", "source": "U6 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 138, "question_number": "12", "chapter": "U6 单元", "section": "练习题", "source": "U6 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 139, "question_number": "13", "chapter": "U6 单元", "section": "练习题", "source": "U6 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 140, "question_number": "7.1", "chapter": "U7 单元", "section": "讲义例题", "source": "U7 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 141, "question_number": "7.1", "chapter": "U7 单元", "section": "课后例题", "source": "U7 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 142, "question_number": "7.3", "chapter": "U7 单元", "section": "课后例题", "source": "U7 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 143, "question_number": "5", "chapter": "U7 单元", "section": "练习题", "source": "U7 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 144, "question_number": "8.3", "chapter": "U8 单元", "section": "讲义例题", "source": "U8 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 145, "question_number": "8.4", "chapter": "U8 单元", "section": "讲义例题", "source": "U8 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 146, "question_number": "8.7", "chapter": "U8 单元", "section": "讲义例题", "source": "U8 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 147, "question_number": "8.8", "chapter": "U8 单元", "section": "讲义例题", "source": "U8 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 148, "question_number": "8.9", "chapter": "U8 单元", "section": "讲义例题", "source": "U8 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 149, "question_number": "8.10", "chapter": "U8 单元", "section": "讲义例题", "source": "U8 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 150, "question_number": "8.11", "chapter": "U8 单元", "section": "讲义例题", "source": "U8 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 151, "question_number": "8.12", "chapter": "U8 单元", "section": "讲义例题", "source": "U8 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 152, "question_number": "8.13", "chapter": "U8 单元", "section": "讲义例题", "source": "U8 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 153, "question_number": "8.17", "chapter": "U8 单元", "section": "讲义例题", "source": "U8 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 154, "question_number": "8.18", "chapter": "U8 单元", "section": "讲义例题", "source": "U8 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 155, "question_number": "8.19", "chapter": "U8 单元", "section": "讲义例题", "source": "U8 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 156, "question_number": "8.3", "chapter": "U8 单元", "section": "课后例题", "source": "U8 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 157, "question_number": "8.5", "chapter": "U8 单元", "section": "课后例题", "source": "U8 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 158, "question_number": "8.7", "chapter": "U8 单元", "section": "课后例题", "source": "U8 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 159, "question_number": "1", "chapter": "U8 单元", "section": "练习题", "source": "U8 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 160, "question_number": "4", "chapter": "U8 单元", "section": "练习题", "source": "U8 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 161, "question_number": "5", "chapter": "U8 单元", "section": "练习题", "source": "U8 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 162, "question_number": "13", "chapter": "U8 单元", "section": "练习题", "source": "U8 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 163, "question_number": "15", "chapter": "U8 单元", "section": "练习题", "source": "U8 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 164, "question_number": "21", "chapter": "U8 单元", "section": "练习题", "source": "U8 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 165, "question_number": "9.5", "chapter": "U9 单元", "section": "讲义例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 166, "question_number": "9.6", "chapter": "U9 单元", "section": "讲义例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 167, "question_number": "9.12", "chapter": "U9 单元", "section": "讲义例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 168, "question_number": "9.14", "chapter": "U9 单元", "section": "讲义例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 169, "question_number": "9.15", "chapter": "U9 单元", "section": "讲义例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 170, "question_number": "9.19", "chapter": "U9 单元", "section": "讲义例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 171, "question_number": "9.21", "chapter": "U9 单元", "section": "讲义例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 172, "question_number": "9.23", "chapter": "U9 单元", "section": "讲义例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 173, "question_number": "9.25", "chapter": "U9 单元", "section": "讲义例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 174, "question_number": "9.26", "chapter": "U9 单元", "section": "讲义例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 175, "question_number": "9.27", "chapter": "U9 单元", "section": "讲义例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 176, "question_number": "9.28", "chapter": "U9 单元", "section": "讲义例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 177, "question_number": "9.1", "chapter": "U9 单元", "section": "课后例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 178, "question_number": "9.2", "chapter": "U9 单元", "section": "课后例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 179, "question_number": "9.5", "chapter": "U9 单元", "section": "课后例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 180, "question_number": "9.8", "chapter": "U9 单元", "section": "课后例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 181, "question_number": "9.9", "chapter": "U9 单元", "section": "课后例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 182, "question_number": "9.10", "chapter": "U9 单元", "section": "课后例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 183, "question_number": "9.11", "chapter": "U9 单元", "section": "课后例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 184, "question_number": "9.12", "chapter": "U9 单元", "section": "课后例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 185, "question_number": "9.13", "chapter": "U9 单元", "section": "课后例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 186, "question_number": "9.14", "chapter": "U9 单元", "section": "课后例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 187, "question_number": "9.15", "chapter": "U9 单元", "section": "课后例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 188, "question_number": "9.17", "chapter": "U9 单元", "section": "课后例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 189, "question_number": "9.19", "chapter": "U9 单元", "section": "课后例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 190, "question_number": "9.21", "chapter": "U9 单元", "section": "课后例题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 191, "question_number": "2", "chapter": "U9 单元", "section": "练习题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 192, "question_number": "3", "chapter": "U9 单元", "section": "练习题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 193, "question_number": "4", "chapter": "U9 单元", "section": "练习题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 194, "question_number": "6", "chapter": "U9 单元", "section": "练习题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 195, "question_number": "7", "chapter": "U9 单元", "section": "练习题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 196, "question_number": "8", "chapter": "U9 单元", "section": "练习题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 197, "question_number": "12", "chapter": "U9 单元", "section": "练习题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 198, "question_number": "13", "chapter": "U9 单元", "section": "练习题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 199, "question_number": "15", "chapter": "U9 单元", "section": "练习题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 200, "question_number": "20", "chapter": "U9 单元", "section": "练习题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 201, "question_number": "25", "chapter": "U9 单元", "section": "练习题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 202, "question_number": "26", "chapter": "U9 单元", "section": "练习题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 203, "question_number": "29", "chapter": "U9 单元", "section": "练习题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 204, "question_number": "32", "chapter": "U9 单元", "section": "练习题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 205, "question_number": "33", "chapter": "U9 单元", "section": "练习题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 206, "question_number": "34", "chapter": "U9 单元", "section": "练习题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 207, "question_number": "35", "chapter": "U9 单元", "section": "练习题", "source": "U9 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 208, "question_number": "10.2", "chapter": "U10 单元", "section": "讲义例题", "source": "U10 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 209, "question_number": "10.5", "chapter": "U10 单元", "section": "讲义例题", "source": "U10 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 210, "question_number": "5", "chapter": "U10 单元", "section": "练习题", "source": "U10 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 211, "question_number": "7", "chapter": "U10 单元", "section": "练习题", "source": "U10 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 212, "question_number": "8", "chapter": "U10 单元", "section": "练习题", "source": "U10 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 213, "question_number": "13", "chapter": "U10 单元", "section": "练习题", "source": "U10 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}, {"id": 214, "question_number": "15", "chapter": "U10 单元", "section": "练习题", "source": "U10 单元", "note": "", "wrong_count": 1, "date_added": "2026-06-05", "last_wrong_date": "2026-06-05", "consecutive_correct": 0, "mastered": 0, "last_practice_date": null, "error_type": ""}];
+const SEED_RESULTS=[{"id": 1, "question_id": 27, "date": "2026-06-05", "result": "correct", "error_type": ""}, {"id": 2, "question_id": 2, "date": "2026-06-05", "result": "correct", "error_type": ""}, {"id": 3, "question_id": 2, "date": "2026-06-05", "result": "wrong", "error_type": ""}, {"id": 4, "question_id": 2, "date": "2026-06-05", "result": "correct", "error_type": ""}, {"id": 5, "question_id": 2, "date": "2026-06-05", "result": "wrong", "error_type": ""}, {"id": 6, "question_id": 2, "date": "2026-06-05", "result": "correct", "error_type": ""}];
+const SEED_DAILY=[{"id": 10, "date": "2026-06-05", "questions": "[208, 123, 153, 9, 33, 84, 129, 108, 53, 29, 11, 78, 74, 190, 141]", "created_at": "2026-06-05 22:08:22"}];
+
+async function seedData(){
+    // 只读检查是否已导入
+    const rs=tx("wrong_questions","readonly");
+    const existing=await prom(rs.getAll());
+    if(existing.length===0){
+        await bulkPut("wrong_questions",SEED_QUESTIONS);
+        await bulkPut("practice_results",SEED_RESULTS);
+        await bulkPut("daily_practice",SEED_DAILY);
+    }
+}
+
+(async function init(){
+try{
+await openDB();
+await seedData();
+await refreshStats();
+// 启动提醒
+if(Notification.permission==='granted'){const rt=localStorage.getItem('remind_time');if(rt)scheduleReminder(rt)}
+}catch(e){console.error('DB init error:',e);toast('数据初始化失败，请刷新重试','err')}
+})();
+</script>
+</body>
+</html>

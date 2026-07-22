@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: cuoti
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app -b 0.0.0.0:$PORT
+    region: oregon
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.4
