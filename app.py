@@ -1,11 +1,12 @@
 """
-错题管理智能体 v2 - Flask 后端
+错题管理智能体 v3 - Flask 后端
 功能：
   1. 错题 CRUD + 搜索
   2. 练习结果追踪 + 智能掌握判定（连续 3 次正确 → 掌握）
   3. 权重抽题算法（错误次数 + 新鲜度 + 陈旧度）
   4. 可配置每日题数
   5. CSV 导出 + 统计
+  6. 自动数据备份（JSON格式，包含图片）
 """
 import os
 import json
@@ -13,9 +14,10 @@ import sqlite3
 import random
 import csv
 import io
+import shutil
 from datetime import date, datetime, timedelta
 from collections import defaultdict
-from flask import Flask, request, jsonify, g, render_template, Response
+from flask import Flask, request, jsonify, g, render_template, Response, send_file
 
 app = Flask(__name__)
 DATABASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wrong_questions.db')
@@ -603,6 +605,187 @@ def export_csv():
         mimetype='text/csv',
         headers={'Content-Disposition': 'attachment; filename=wrong_questions_export.csv'}
     )
+
+
+# ══════════════════════════════════════════════════════════
+# 数据备份
+# ══════════════════════════════════════════════════════════
+
+BACKUP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backups')
+
+def ensure_backup_dir():
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+
+@app.route('/api/backup', methods=['POST'])
+def create_backup():
+    """创建完整数据备份（包含图片）"""
+    ensure_backup_dir()
+    db = get_db()
+    
+    backup_data = {
+        'version': 'v3',
+        'backup_time': datetime.now().isoformat(),
+        'questions': [],
+        'practice_results': [],
+        'settings': [],
+        'daily_practice': []
+    }
+    
+    rows = db.execute("SELECT * FROM wrong_questions").fetchall()
+    backup_data['questions'] = [dict(r) for r in rows]
+    
+    rows = db.execute("SELECT * FROM practice_results").fetchall()
+    backup_data['practice_results'] = [dict(r) for r in rows]
+    
+    rows = db.execute("SELECT * FROM settings").fetchall()
+    backup_data['settings'] = [dict(r) for r in rows]
+    
+    rows = db.execute("SELECT * FROM daily_practice").fetchall()
+    backup_data['daily_practice'] = [dict(r) for r in rows]
+    
+    filename = f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    filepath = os.path.join(BACKUP_DIR, filename)
+    
+    with open(filepath, 'w', encoding='utf-8') as f:
+        json.dump(backup_data, f, ensure_ascii=False, indent=2)
+    
+    return jsonify({
+        'ok': True,
+        'filename': filename,
+        'size': os.path.getsize(filepath),
+        'question_count': len(backup_data['questions']),
+        'backup_time': backup_data['backup_time']
+    })
+
+@app.route('/api/backup/list', methods=['GET'])
+def list_backups():
+    """获取备份文件列表"""
+    ensure_backup_dir()
+    backups = []
+    try:
+        files = sorted(os.listdir(BACKUP_DIR), reverse=True)
+        for f in files:
+            if f.endswith('.json'):
+                filepath = os.path.join(BACKUP_DIR, f)
+                backups.append({
+                    'filename': f,
+                    'size': os.path.getsize(filepath),
+                    'mtime': datetime.fromtimestamp(os.path.getmtime(filepath)).isoformat()
+                })
+    except Exception:
+        pass
+    return jsonify({'backups': backups})
+
+@app.route('/api/backup/download/<filename>', methods=['GET'])
+def download_backup(filename):
+    """下载备份文件"""
+    ensure_backup_dir()
+    filepath = os.path.join(BACKUP_DIR, filename)
+    if not os.path.exists(filepath):
+        return jsonify({'ok': False, 'error': '备份文件不存在'}), 404
+    return send_file(filepath, as_attachment=True, download_name=filename)
+
+@app.route('/api/backup/restore', methods=['POST'])
+def restore_backup():
+    """从备份恢复数据（会覆盖现有数据）"""
+    ensure_backup_dir()
+    data = request.get_json()
+    filename = data.get('filename')
+    
+    if filename:
+        filepath = os.path.join(BACKUP_DIR, filename)
+        if not os.path.exists(filepath):
+            return jsonify({'ok': False, 'error': '备份文件不存在'}), 404
+        with open(filepath, 'r', encoding='utf-8') as f:
+            backup_data = json.load(f)
+    else:
+        backup_data = data.get('data')
+        if not backup_data:
+            return jsonify({'ok': False, 'error': '未提供备份数据'}), 400
+    
+    db = get_db()
+    
+    try:
+        db.execute("DELETE FROM practice_results")
+        db.execute("DELETE FROM daily_practice")
+        db.execute("DELETE FROM wrong_questions")
+        db.execute("DELETE FROM settings")
+        
+        if 'questions' in backup_data:
+            for q in backup_data['questions']:
+                db.execute("""
+                    INSERT INTO wrong_questions 
+                    (id, question_number, chapter, section, source, note, wrong_count, 
+                     consecutive_correct, mastered, date_added, last_wrong_date, 
+                     last_practice_date, error_type, knowledge_tags, difficulty, 
+                     question_type, image_data)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """, (
+                    q.get('id'), q.get('question_number', ''), q.get('chapter', ''),
+                    q.get('section', ''), q.get('source', ''), q.get('note', ''),
+                    q.get('wrong_count', 1), q.get('consecutive_correct', 0),
+                    q.get('mastered', 0), q.get('date_added', ''),
+                    q.get('last_wrong_date', ''), q.get('last_practice_date'),
+                    q.get('error_type', ''), q.get('knowledge_tags', ''),
+                    q.get('difficulty', ''), q.get('question_type', ''),
+                    q.get('image_data')
+                ))
+        
+        if 'practice_results' in backup_data:
+            for pr in backup_data['practice_results']:
+                db.execute("""
+                    INSERT INTO practice_results (id, question_id, date, result, error_type)
+                    VALUES (?,?,?,?,?)
+                """, (pr.get('id'), pr.get('question_id'), pr.get('date', ''),
+                      pr.get('result', ''), pr.get('error_type', '')))
+        
+        if 'settings' in backup_data:
+            for s in backup_data['settings']:
+                db.execute("INSERT INTO settings (key, value) VALUES (?,?)",
+                          (s.get('key'), s.get('value', '')))
+        
+        if 'daily_practice' in backup_data:
+            for dp in backup_data['daily_practice']:
+                db.execute("""
+                    INSERT INTO daily_practice (id, date, questions, created_at)
+                    VALUES (?,?,?,?)
+                """, (dp.get('id'), dp.get('date', ''), dp.get('questions', '[]'),
+                      dp.get('created_at', '')))
+        
+        db.commit()
+        return jsonify({
+            'ok': True,
+            'questions_restored': len(backup_data.get('questions', [])),
+            'results_restored': len(backup_data.get('practice_results', []))
+        })
+    except Exception as e:
+        db.rollback()
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+@app.route('/api/backup/automatic', methods=['GET'])
+def get_automatic_backup():
+    """检查是否需要自动备份（每天一次）"""
+    last_backup = get_setting('last_backup_time', '')
+    today = date.today().isoformat()
+    needs_backup = not last_backup or not last_backup.startswith(today)
+    return jsonify({'needs_backup': needs_backup, 'last_backup_time': last_backup})
+
+@app.route('/api/backup/cleanup', methods=['POST'])
+def cleanup_backups():
+    """清理旧备份（保留最近7个）"""
+    ensure_backup_dir()
+    try:
+        files = sorted(os.listdir(BACKUP_DIR), reverse=True)
+        json_files = [f for f in files if f.endswith('.json')]
+        to_delete = json_files[7:]
+        deleted_count = 0
+        for f in to_delete:
+            filepath = os.path.join(BACKUP_DIR, f)
+            os.remove(filepath)
+            deleted_count += 1
+        return jsonify({'ok': True, 'deleted': deleted_count, 'remaining': len(json_files) - deleted_count})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
 
 
 # ══════════════════════════════════════════════════════════

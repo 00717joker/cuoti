@@ -739,10 +739,15 @@ header p{font-size:.75rem;margin-top:2px}
 <p style="font-size:.7rem;color:var(--t2);margin-top:12px">掌握判定：做对一次即标记"已掌握"</p>
 <div style="margin-top:12px"><button class="btn btn-o btn-sm" onclick="resetAllMastered()">重置所有掌握状态</button></div>
 <div style="margin-top:12px;border-top:1px solid var(--bd);padding-top:8px">
-<p style="font-size:.7rem;color:var(--t2)">数据备份</p>
-<button class="btn btn-o btn-sm" onclick="exportData()" style="margin:4px 4px 0 0">导出备份</button>
-<button class="btn btn-o btn-sm" onclick="document.getElementById('importFileInput').click()" style="margin:4px 0 0 0">导入备份</button>
+<h3 style="font-size:.85rem;font-weight:600;margin:0 0 8px">💾 数据备份</h3>
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+<button class="btn btn-p btn-sm" onclick="createBackup()">📦 创建备份</button>
+<button class="btn btn-s btn-sm" onclick="loadBackupList()">📋 备份列表</button>
+<button class="btn btn-o btn-sm" onclick="document.getElementById('importFileInput').click()">📥 导入备份</button>
 <input type="file" id="importFileInput" accept=".json" style="display:none" onchange="handleImport(this.files[0])">
+</div>
+<div id="autoBackupStatus" style="font-size:.7rem;color:var(--t2);margin-bottom:8px"></div>
+<div id="backupList" style="display:none;max-height:300px;overflow-y:auto"></div>
 </div>
 <div style="margin-top:12px;border-top:1px solid var(--bd);padding-top:8px">
 <p style="font-size:.7rem;color:var(--t2);margin-bottom:4px">数据同步（需先启动在线版服务器）</p>
@@ -1767,11 +1772,74 @@ observer.unobserve(img);
 $$('img[data-src]').forEach(img=>observer.observe(img));
 }
 
+// ═══ 数据备份 ═══
+async function createBackup(){
+const r=await api('/api/backup',{method:'POST'});
+if(r&&r.ok){
+toast(`备份成功！共${r.question_count}题`, 'ok');
+loadBackupList();
+}
+else{
+toast('备份失败', 'err');
+}
+}
+
+async function loadBackupList(){
+const r=await api('/api/backup/list');
+if(!r)return;
+const list=$('#backupList');
+if(!r.backups||r.backups.length===0){
+list.innerHTML='<div style="text-align:center;color:var(--t3);padding:16px">暂无备份</div>';
+list.style.display='block';
+return;
+}
+list.innerHTML=r.backups.map(b=>{
+const dateStr=new Date(b.mtime).toLocaleString('zh-CN');
+const sizeKB=(b.size/1024).toFixed(1);
+return`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg);border-radius:var(--r-sm);margin-bottom:6px"><div><div style="font-size:.8rem;font-weight:600;color:var(--txt)">${b.filename}</div><div style="font-size:.65rem;color:var(--t3)">${dateStr} · ${sizeKB} KB</div></div><div style="display:flex;gap:4px"><button class="btn btn-o btn-xs" onclick="downloadBackup('${b.filename}')">下载</button><button class="btn btn-d btn-xs" onclick="restoreBackup('${b.filename}')">恢复</button></div></div>`;
+}).join('');
+list.style.display='block';
+}
+
+function downloadBackup(filename){
+window.open('/api/backup/download/'+filename,'_blank');
+}
+
+async function restoreBackup(filename){
+if(!confirm(`确定要恢复备份 "${filename}" 吗？这将覆盖当前所有数据！`))return;
+const r=await api('/api/backup/restore',{method:'POST',body:JSON.stringify({filename})});
+if(r&&r.ok){
+toast(`已恢复 ${r.questions_restored} 道题`, 'ok');
+loadBackupList();
+refreshStats();
+switchTab('bank');
+}
+else{
+toast('恢复失败', 'err');
+}
+}
+
+async function checkAutoBackup(){
+const r=await api('/api/backup/automatic');
+if(!r)return;
+const status=$('#autoBackupStatus');
+if(r.needs_backup){
+status.textContent='⚠️ 今日尚未备份，建议及时备份数据';
+status.style.color='var(--warn)';
+status.style.fontWeight='600';
+}
+else{
+status.textContent='✓ 今日已备份';
+status.style.color='var(--succ)';
+}
+}
+
 // 初始化
 (async function init(){
 await Promise.all([refreshStats(),loadSettings()]);
 if(Notification.permission==='granted'){const rt=localStorage.getItem('remind_time');if(rt)scheduleReminder(rt)}
 initLazyLoad();
+checkAutoBackup();
 })();
 </script>
 </body>
