@@ -133,9 +133,65 @@ def init_db():
         db.commit()
 
 
+def restore_from_backup(db):
+    backup_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'initial_data.json')
+    if not os.path.exists(backup_path):
+        return 0
+    
+    try:
+        with open(backup_path, 'r', encoding='utf-8') as f:
+            backup_data = json.load(f)
+        
+        count = db.execute("SELECT COUNT(*) as c FROM wrong_questions").fetchone()['c']
+        if count > 0:
+            return 0
+        
+        if 'questions' in backup_data:
+            for q in backup_data['questions']:
+                db.execute("""
+                    INSERT INTO wrong_questions 
+                    (id, question_number, chapter, section, source, note, wrong_count, 
+                     consecutive_correct, mastered, date_added, last_wrong_date, 
+                     last_practice_date, error_type, knowledge_tags, difficulty, 
+                     question_type, image_data)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """, (
+                    q.get('id'), q.get('question_number', ''), q.get('chapter', ''),
+                    q.get('section', ''), q.get('source', ''), q.get('note', ''),
+                    q.get('wrong_count', 1), q.get('consecutive_correct', 0),
+                    q.get('mastered', 0), q.get('date_added', ''),
+                    q.get('last_wrong_date', ''), q.get('last_practice_date'),
+                    q.get('error_type', ''), q.get('knowledge_tags', ''),
+                    q.get('difficulty', ''), q.get('question_type', ''),
+                    q.get('image_data')
+                ))
+        
+        if 'practice_results' in backup_data:
+            for pr in backup_data['practice_results']:
+                db.execute("""
+                    INSERT INTO practice_results (id, question_id, date, result, error_type)
+                    VALUES (?,?,?,?,?)
+                """, (pr.get('id'), pr.get('question_id'), pr.get('date', ''),
+                      pr.get('result', ''), pr.get('error_type', '')))
+        
+        if 'settings' in backup_data:
+            for s in backup_data['settings']:
+                db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?,?)",
+                          (s.get('key'), s.get('value', '')))
+        
+        db.commit()
+        return len(backup_data.get('questions', []))
+    except Exception as e:
+        print(f'Error restoring backup: {e}')
+        return 0
+
 # ── 应用启动时初始化数据库 ──
 with app.app_context():
     init_db()
+    db = get_db()
+    restored = restore_from_backup(db)
+    if restored > 0:
+        print(f'  已从备份恢复 {restored} 道题')
 
 # ── CORS 支持（允许离线版 file:// 访问） ──
 @app.after_request
