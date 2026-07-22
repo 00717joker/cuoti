@@ -22,6 +22,7 @@ from flask import Flask, request, jsonify, g, render_template, Response, send_fi
 app = Flask(__name__)
 
 DATA_DIR = os.environ.get('DATA_DIR', os.path.dirname(os.path.abspath(__file__)))
+os.makedirs(DATA_DIR, exist_ok=True)
 DATABASE = os.path.join(DATA_DIR, 'wrong_questions.db')
 
 MASTER_THRESHOLD = 1  # 做对一次即掌握
