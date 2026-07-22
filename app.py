@@ -20,7 +20,9 @@ from collections import defaultdict
 from flask import Flask, request, jsonify, g, render_template, Response, send_file
 
 app = Flask(__name__)
-DATABASE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'wrong_questions.db')
+
+DATA_DIR = os.environ.get('DATA_DIR', os.path.dirname(os.path.abspath(__file__)))
+DATABASE = os.path.join(DATA_DIR, 'wrong_questions.db')
 
 MASTER_THRESHOLD = 1  # 做对一次即掌握
 DAILY_COUNT_DEFAULT = 15
