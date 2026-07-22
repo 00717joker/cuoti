@@ -129,6 +129,10 @@ def init_db():
         db.commit()
 
 
+# ── 应用启动时初始化数据库 ──
+with app.app_context():
+    init_db()
+
 # ── CORS 支持（允许离线版 file:// 访问） ──
 @app.after_request
 def add_cors_headers(response):
