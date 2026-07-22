@@ -254,6 +254,18 @@ def batch_delete():
     return jsonify({'ok': True, 'deleted': len(ids)})
 
 
+@app.route('/api/questions/<int:qid>/image', methods=['PUT'])
+def update_question_image(qid):
+    data = request.get_json()
+    img_data = data.get('image_data')
+    if not img_data:
+        return jsonify({'ok': False, 'error': '未提供图片数据'}), 400
+    db = get_db()
+    db.execute("UPDATE wrong_questions SET image_data=? WHERE id=?", (img_data, qid))
+    db.commit()
+    return jsonify({'ok': True})
+
+
 # ─── 搜索 ─────────────────────────────────────────────────
 
 @app.route('/api/search', methods=['GET'])
