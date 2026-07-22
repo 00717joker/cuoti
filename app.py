@@ -135,7 +135,11 @@ def init_db():
 
 def restore_from_backup(db):
     backup_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'initial_data.json')
+    print(f'  [DEBUG] Looking for backup at: {backup_path}')
+    print(f'  [DEBUG] File exists: {os.path.exists(backup_path)}')
+    
     if not os.path.exists(backup_path):
+        print('  [DEBUG] Backup file not found')
         return 0
     
     try:
@@ -143,7 +147,9 @@ def restore_from_backup(db):
             backup_data = json.load(f)
         
         count = db.execute("SELECT COUNT(*) as c FROM wrong_questions").fetchone()['c']
+        print(f'  [DEBUG] Current questions: {count}')
         if count > 0:
+            print('  [DEBUG] Database not empty, skipping restore')
             return 0
         
         if 'questions' in backup_data:
@@ -180,9 +186,11 @@ def restore_from_backup(db):
                           (s.get('key'), s.get('value', '')))
         
         db.commit()
-        return len(backup_data.get('questions', []))
+        restored_count = len(backup_data.get('questions', []))
+        print(f'  [DEBUG] Successfully restored {restored_count} questions')
+        return restored_count
     except Exception as e:
-        print(f'Error restoring backup: {e}')
+        print(f'  [DEBUG] Error restoring backup: {e}')
         return 0
 
 # ── 应用启动时初始化数据库 ──
@@ -215,6 +223,16 @@ def get_setting(key, default=None):
 @app.route('/')
 def index():
     return render_template('index.html')
+
+
+@app.route('/api/restore', methods=['POST'])
+def manual_restore():
+    db = get_db()
+    db.execute("DELETE FROM wrong_questions")
+    db.execute("DELETE FROM practice_results")
+    db.commit()
+    restored = restore_from_backup(db)
+    return jsonify({'success': True, 'restored': restored})
 
 
 # ─── 错题 CRUD ────────────────────────────────────────────
