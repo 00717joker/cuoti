@@ -13,9 +13,8 @@ import math
 from datetime import date, datetime, timedelta
 from collections import defaultdict, Counter
 from flask import Flask, request, jsonify, g, render_template, Response, send_file
-from sqlalchemy import create_engine, Column, Integer, String, Text, UniqueConstraint, DateTime, Float
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine, Column, Integer, String, Text, UniqueConstraint, DateTime, Float, text
+from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy import inspect
 
 app = Flask(__name__)
@@ -32,7 +31,8 @@ ERROR_TYPES = {
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
 if DATABASE_URL:
-    engine = create_engine(DATABASE_URL)
+    DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=300)
 else:
     DATA_DIR = os.environ.get('DATA_DIR', os.path.dirname(os.path.abspath(__file__)))
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -102,18 +102,24 @@ def init_db():
     except Exception as e:
         print(f'Create tables error: {e}')
     
-    session = Session()
     try:
+        session = Session()
         if not session.query(Setting).filter_by(key='daily_count').first():
             session.add(Setting(key='daily_count', value='15'))
         if not session.query(Setting).filter_by(key='last_backup_date').first():
             session.add(Setting(key='last_backup_date', value=''))
         session.commit()
+        session.close()
     except Exception as e:
         print(f'Settings error: {e}')
-        session.rollback()
-    finally:
-        session.close()
+        try:
+            session.rollback()
+        except:
+            pass
+        try:
+            session.close()
+        except:
+            pass
 
 def restore_from_backup():
     backup_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'initial_data.json')
@@ -164,6 +170,16 @@ def add_cors_headers(response):
     response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
     response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
     return response
+
+@app.route('/health')
+def health():
+    try:
+        session = Session()
+        session.execute(text('SELECT 1'))
+        session.close()
+        return jsonify({'status': 'healthy', 'database': 'connected'})
+    except Exception as e:
+        return jsonify({'status': 'unhealthy', 'error': str(e)}), 503
 
 def get_setting(key, default=None):
     session = get_session()
