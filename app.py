@@ -83,15 +83,6 @@ class Setting(Base):
     key = Column(String, primary_key=True)
     value = Column(String, nullable=False)
 
-class StudySession(Base):
-    __tablename__ = 'study_sessions'
-    id = Column(Integer, primary_key=True)
-    date = Column(String, nullable=False)
-    start_time = Column(String, nullable=False)
-    end_time = Column(String)
-    duration_seconds = Column(Integer, default=0)
-    question_count = Column(Integer, default=0)
-
 Session = sessionmaker(bind=engine)
 
 def get_session():
@@ -666,22 +657,6 @@ def get_targeted_practice():
         'questions': [{c.name: getattr(q, c.name) for c in WrongQuestion.__table__.columns} for q in questions]
     })
 
-@app.route('/api/study-time', methods=['POST'])
-def record_study_time():
-    data = request.get_json()
-    duration_seconds = data.get('duration_seconds', 0)
-    question_count = data.get('question_count', 0)
-    start_time = data.get('start_time', '')
-    end_time = data.get('end_time', '')
-    today = str(date.today())
-    session = get_session()
-    session.add(StudySession(
-        date=today, start_time=start_time, end_time=end_time,
-        duration_seconds=duration_seconds, question_count=question_count
-    ))
-    session.commit()
-    return jsonify({'ok': True})
-
 # ═══ 学习数据可视化 ═══
 @app.route('/api/stats/overview', methods=['GET'])
 def get_stats_overview():
@@ -755,9 +730,8 @@ def get_diagnosis():
     correct_count = sum(1 for r in recent_results if r.result == 'correct')
     total_recent = len(recent_results)
     recent_accuracy = round(correct_count / total_recent * 100) if total_recent > 0 else 0
-    sessions = session.query(StudySession).all()
-    total_minutes = sum(s.duration_seconds for s in sessions) // 60
-    days_studied = len(set(s.date for s in sessions))
+    total_minutes = 0
+    days_studied = 0
     suggestions = []
     if remaining > 0:
         suggestions.append(f'还有 {remaining} 道错题待攻克，继续加油！')
@@ -894,9 +868,7 @@ def get_trends():
         mastered = session.query(WrongQuestion).filter(WrongQuestion.mastered == 1).count()
         pct = round(mastered / total * 100) if total > 0 else 0
         mastery_trend.append({'date': d, 'pct': pct})
-        sessions = session.query(StudySession).filter(StudySession.date == d).all()
-        minutes = sum(s.duration_seconds for s in sessions) // 60
-        duration_trend.append({'date': d, 'minutes': minutes})
+        duration_trend.append({'date': d, 'minutes': 0})
     return jsonify({
         'trend': trend_data,
         'mastery_trend': mastery_trend,
@@ -998,7 +970,7 @@ def get_deep_analysis():
     for tag, count in tag_forget_counts.most_common(5):
         forgetting_by_tag.append({'tag': tag, 'count': count})
     
-    total_minutes = sum(s.duration_seconds for s in session.query(StudySession).all()) // 60
+    total_minutes = 0
     total_questions = len(results)
     days_with_practice = len(set(r.date for r in results))
     avg_daily_questions = round(total_questions / days_with_practice) if days_with_practice > 0 else 0
@@ -1166,11 +1138,7 @@ def get_weekly_report():
     prev_accuracy = round(sum(1 for r in prev_results if r.result == 'correct') / len(prev_results) * 100) if prev_results else 0
     
     days_studied = len(set(r.date for r in week_results))
-    sessions = session.query(StudySession).filter(
-        StudySession.date >= str(week_start),
-        StudySession.date <= str(week_end)
-    ).all()
-    total_minutes = sum(s.duration_seconds for s in sessions) // 60
+    total_minutes = 0
     
     mastered_count = session.query(WrongQuestion).filter(WrongQuestion.mastered == 1).count()
     
