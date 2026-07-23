@@ -1,6 +1,7 @@
 [build]
 builder = "nixpacks"
+nixpacksConfig = { python = { version = "3.11" } }
 
 [deploy]
-startCommand = "gunicorn app:app --bind 0.0.0.0:$PORT --reload"
+startCommand = "gunicorn app:app --bind 0.0.0.0:$PORT"
 restartPolicyType = "always"
