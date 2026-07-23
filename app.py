@@ -83,6 +83,15 @@ class Setting(Base):
     key = Column(String, primary_key=True)
     value = Column(String, nullable=False)
 
+class StudySession(Base):
+    __tablename__ = 'study_sessions'
+    id = Column(Integer, primary_key=True)
+    date = Column(String, nullable=False)
+    start_time = Column(String, nullable=False)
+    end_time = Column(String)
+    duration_seconds = Column(Integer, default=0)
+    question_count = Column(Integer, default=0)
+
 Session = sessionmaker(bind=engine)
 
 def get_session():
@@ -99,28 +108,37 @@ def close_session(exception):
 def init_db():
     Base.metadata.create_all(engine)
     
-    raw_conn = engine.raw_connection()
-    cursor = raw_conn.cursor()
+    inspector = inspect(engine)
     
     try:
-        cursor.execute("PRAGMA table_info(practice_results)")
-        cols = [col[1] for col in cursor.fetchall()]
-        if 'time_spent' not in cols:
-            cursor.execute("ALTER TABLE practice_results ADD COLUMN time_spent INTEGER DEFAULT 0")
+        if 'practice_results' in inspector.get_table_names():
+            cols = [c['name'] for c in inspector.get_columns('practice_results')]
+            if 'time_spent' not in cols:
+                with engine.connect() as conn:
+                    conn.execute("ALTER TABLE practice_results ADD COLUMN time_spent INTEGER DEFAULT 0")
+                    conn.commit()
     except:
         pass
     
     try:
-        cursor.execute("PRAGMA table_info(daily_practice)")
-        cols = [col[1] for col in cursor.fetchall()]
-        if 'created_at' not in cols:
-            cursor.execute("ALTER TABLE daily_practice ADD COLUMN created_at TEXT")
+        if 'daily_practice' in inspector.get_table_names():
+            cols = [c['name'] for c in inspector.get_columns('daily_practice')]
+            if 'created_at' not in cols:
+                with engine.connect() as conn:
+                    conn.execute("ALTER TABLE daily_practice ADD COLUMN created_at TEXT")
+                    conn.commit()
     except:
         pass
     
-    raw_conn.commit()
-    cursor.close()
-    raw_conn.close()
+    try:
+        if 'study_sessions' in inspector.get_table_names():
+            cols = [c['name'] for c in inspector.get_columns('study_sessions')]
+            if 'start_time' not in cols:
+                with engine.connect() as conn:
+                    conn.execute("ALTER TABLE study_sessions ADD COLUMN start_time TEXT")
+                    conn.commit()
+    except:
+        pass
     
     session = Session()
     if not session.query(Setting).filter_by(key='daily_count').first():
@@ -734,12 +752,12 @@ def get_heatmap_data():
         ).count()
         mastery_pct = round(mastered / total * 100) if total > 0 else 0
         error_types = {}
-        results = session.query(PracticeResult).join(WrongQuestion).filter(
-            WrongQuestion.chapter == ch, PracticeResult.result == 'wrong'
-        ).all()
-        for r in results:
-            etype = r.error_type if r.error_type else 'unknown'
-            error_types[etype] = error_types.get(etype, 0) + 1
+        wrong_results = session.query(PracticeResult).filter(PracticeResult.result == 'wrong').all()
+        for r in wrong_results:
+            q = session.query(WrongQuestion).get(r.question_id)
+            if q and q.chapter == ch:
+                etype = r.error_type if r.error_type else 'unknown'
+                error_types[etype] = error_types.get(etype, 0) + 1
         result.append({
             'chapter': ch,
             'total': total,
