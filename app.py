@@ -106,47 +106,23 @@ def close_session(exception):
         session.close()
 
 def init_db():
-    Base.metadata.create_all(engine)
-    
-    inspector = inspect(engine)
-    
     try:
-        if 'practice_results' in inspector.get_table_names():
-            cols = [c['name'] for c in inspector.get_columns('practice_results')]
-            if 'time_spent' not in cols:
-                with engine.connect() as conn:
-                    conn.execute("ALTER TABLE practice_results ADD COLUMN time_spent INTEGER DEFAULT 0")
-                    conn.commit()
-    except:
-        pass
-    
-    try:
-        if 'daily_practice' in inspector.get_table_names():
-            cols = [c['name'] for c in inspector.get_columns('daily_practice')]
-            if 'created_at' not in cols:
-                with engine.connect() as conn:
-                    conn.execute("ALTER TABLE daily_practice ADD COLUMN created_at TEXT")
-                    conn.commit()
-    except:
-        pass
-    
-    try:
-        if 'study_sessions' in inspector.get_table_names():
-            cols = [c['name'] for c in inspector.get_columns('study_sessions')]
-            if 'start_time' not in cols:
-                with engine.connect() as conn:
-                    conn.execute("ALTER TABLE study_sessions ADD COLUMN start_time TEXT")
-                    conn.commit()
-    except:
-        pass
+        Base.metadata.create_all(engine)
+    except Exception as e:
+        print(f'Create tables error: {e}')
     
     session = Session()
-    if not session.query(Setting).filter_by(key='daily_count').first():
-        session.add(Setting(key='daily_count', value='15'))
-    if not session.query(Setting).filter_by(key='last_backup_date').first():
-        session.add(Setting(key='last_backup_date', value=''))
-    session.commit()
-    session.close()
+    try:
+        if not session.query(Setting).filter_by(key='daily_count').first():
+            session.add(Setting(key='daily_count', value='15'))
+        if not session.query(Setting).filter_by(key='last_backup_date').first():
+            session.add(Setting(key='last_backup_date', value=''))
+        session.commit()
+    except Exception as e:
+        print(f'Settings error: {e}')
+        session.rollback()
+    finally:
+        session.close()
 
 def restore_from_backup():
     backup_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'initial_data.json')
