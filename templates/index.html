@@ -583,6 +583,7 @@ header p{font-size:.75rem;margin-top:2px}
 <div style="display:flex;gap:6px;align-items:center">
 <button class="btn btn-d btn-sm" onclick="deleteSelected()">删除选中</button>
 <button class="btn btn-o btn-sm" onclick="exportCSV()">导出 CSV</button>
+<button class="btn btn-p btn-sm" onclick="exportPDF()">导出 PDF</button>
 </div>
 </div>
 <input type="text" class="search-box" id="searchBox" placeholder="搜索题号/章节/小节..." oninput="debounceSearch()">
@@ -1226,6 +1227,7 @@ if(r&&r.ok){toast('已删除','ok');loadBank();refreshStats()}
 }
 
 function exportCSV(){window.open('/api/export','_blank');toast('导出成功','ok')}
+function exportPDF(){window.open('/api/export/pdf','_blank');toast('正在生成PDF...','info');setTimeout(()=>toast('PDF导出成功','ok'),1500)}
 
 // 统计
 async function loadStats(){
