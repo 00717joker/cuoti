@@ -32,12 +32,24 @@ ERROR_TYPES = {
 DATABASE_URL = os.environ.get('DATABASE_URL')
 if DATABASE_URL:
     DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=300)
-else:
+    try:
+        engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=300)
+        from sqlalchemy import text
+        test_conn = engine.connect()
+        test_conn.execute(text('SELECT 1'))
+        test_conn.close()
+        print(f'Connected to PostgreSQL database')
+    except Exception as e:
+        print(f'PostgreSQL connection failed: {e}')
+        print('Falling back to SQLite')
+        DATABASE_URL = None
+
+if not DATABASE_URL:
     DATA_DIR = os.environ.get('DATA_DIR', os.path.dirname(os.path.abspath(__file__)))
     os.makedirs(DATA_DIR, exist_ok=True)
     DATABASE_PATH = os.path.join(DATA_DIR, 'wrong_questions.db')
     engine = create_engine(f'sqlite:///{DATABASE_PATH}')
+    print(f'Using SQLite database: {DATABASE_PATH}')
 
 Base = declarative_base()
 
