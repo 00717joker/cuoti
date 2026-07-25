@@ -202,7 +202,11 @@ def get_setting(key, default=None):
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    import os
+    template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates', 'index.html')
+    with open(template_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    return content
 
 @app.route('/api/restore', methods=['POST'])
 def manual_restore():
