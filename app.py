@@ -2,6 +2,7 @@
 错题管理智能体 v3 - Flask 后端
 支持 SQLite 和 PostgreSQL (Supabase)
 包含：艾宾浩斯复习、数据可视化、效率分析、PDF导出
+VERSION: 3.2.0 - Multi-subject support
 """
 import os
 import json
@@ -190,9 +191,9 @@ def health():
         session = Session()
         session.execute(text('SELECT 1'))
         session.close()
-        return jsonify({'status': 'healthy', 'database': 'connected'})
+        return jsonify({'status': 'healthy', 'database': 'connected', 'version': '3.2.0'})
     except Exception as e:
-        return jsonify({'status': 'unhealthy', 'error': str(e)}), 503
+        return jsonify({'status': 'unhealthy', 'error': str(e), 'version': '3.2.0'}), 503
 
 def get_setting(key, default=None):
     session = get_session()
@@ -553,127 +554,124 @@ def cleanup_backups():
     backup_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backups')
     if not os.path.exists(backup_dir):
         return jsonify({'success': True, 'cleaned': 0})
-    backups = sorted([f for f in os.listdir(backup_dir) if f.endswith('.json')], reverse=True)[:7]
-    cleaned = 0
-    for f in os.listdir(backup_dir):
-        if f.endswith('.json') and f not in backups:
-            os.remove(os.path.join(backup_dir, f))
-            cleaned += 1
-    return jsonify({'success': True, 'cleaned': cleaned})
+    backups = sorted([f for f in os.listdir(backup_dir) if f.endswith('.json')], reverse=True)
+    to_delete = backups[7:]
+    for f in to_delete:
+        os.remove(os.path.join(backup_dir, f))
+    return jsonify({'success': True, 'cleaned': len(to_delete)})
 
-# ═══ 艾宾浩斯智能复习 ═══
-def calculate_ebbinghaus_score(q):
-    base_weight = q.wrong_count * 2
-    recency_weight = 0
-    if q.last_wrong_date:
-        try:
-            days_since_wrong = (date.today() - datetime.strptime(q.last_wrong_date, '%Y-%m-%d').date()).days
-            recency_weight = max(0, 14 - days_since_wrong)
-        except:
-            recency_weight = 10
-    else:
-        recency_weight = 10
-    mastered_bonus = 0
-    if q.mastered == 0:
-        mastered_bonus = 10
-    difficulty_multiplier = 1
-    if q.difficulty == 'hard':
-        difficulty_multiplier = 1.5
-    elif q.difficulty == 'medium':
-        difficulty_multiplier = 1.2
-    consecutive_penalty = 0
-    if q.consecutive_correct > 0:
-        consecutive_penalty = q.consecutive_correct * 2
-    return (base_weight + recency_weight + mastered_bonus - consecutive_penalty) * difficulty_multiplier
-
-@app.route('/api/practice/ebbinghaus', methods=['GET'])
-def get_ebbinghaus_practice():
-    count = int(get_setting('daily_count', DAILY_COUNT_DEFAULT))
+@app.route('/api/tags', methods=['GET'])
+def get_tags():
     session = get_session()
-    unmastered = session.query(WrongQuestion).filter(WrongQuestion.mastered == 0).all()
-    if len(unmastered) <= count:
-        questions = unmastered
-    else:
-        weights = [calculate_ebbinghaus_score(q) for q in unmastered]
-        indices = random.choices(range(len(unmastered)), weights=weights, k=count)
-        questions = [unmastered[i] for i in sorted(set(indices))]
-    return jsonify([{c.name: getattr(q, c.name) for c in WrongQuestion.__table__.columns} for q in questions])
+    results = session.query(WrongQuestion).all()
+    tags = set()
+    for q in results:
+        if q.knowledge_tags:
+            for t in q.knowledge_tags.split(','):
+                tags.add(t.strip())
+    return jsonify(sorted([t for t in tags if t]))
 
 @app.route('/api/daily-practice', methods=['GET'])
 def get_daily_practice():
     subject = request.args.get('subject', '')
     target_date = request.args.get('date', str(date.today()))
-    count = int(get_setting('daily_count', DAILY_COUNT_DEFAULT))
     session = get_session()
-    dp_key = f"{target_date}_{subject}" if subject else target_date
-    dp = session.query(DailyPractice).filter_by(date=dp_key).first()
+    count = int(get_setting('daily_count', DAILY_COUNT_DEFAULT))
+    
+    dp = session.query(DailyPractice).filter_by(date=target_date).first()
     if dp:
         q_ids = json.loads(dp.questions)
-        questions = session.query(WrongQuestion).filter(WrongQuestion.id.in_(q_ids)).all()
+        query = session.query(WrongQuestion).filter(WrongQuestion.id.in_(q_ids))
+        if subject:
+            query = query.filter(WrongQuestion.subject == subject)
+        questions = query.all()
     else:
         query = session.query(WrongQuestion).filter(WrongQuestion.mastered == 0)
         if subject:
             query = query.filter(WrongQuestion.subject == subject)
         unmastered = query.all()
+        
         if len(unmastered) <= count:
             questions = unmastered
         else:
-            weights = [calculate_ebbinghaus_score(q) for q in unmastered]
+            weights = []
+            for q in unmastered:
+                base_weight = q.wrong_count * 2
+                if q.last_wrong_date:
+                    try:
+                        days_since_wrong = (date.today() - datetime.strptime(q.last_wrong_date, '%Y-%m-%d').date()).days
+                        recency_weight = max(0, 10 - days_since_wrong)
+                    except:
+                        recency_weight = 10
+                else:
+                    recency_weight = 10
+                weights.append(base_weight + recency_weight)
             indices = random.choices(range(len(unmastered)), weights=weights, k=count)
             questions = [unmastered[i] for i in sorted(set(indices))]
-        dp = DailyPractice(date=dp_key, questions=json.dumps([q.id for q in questions]))
+        
+        dp = DailyPractice(date=target_date, questions=json.dumps([q.id for q in questions]))
         session.add(dp)
         session.commit()
+    
     today_results = {}
     for pr in session.query(PracticeResult).filter(PracticeResult.date == target_date).all():
         today_results[pr.question_id] = pr.result
-    result = [{c.name: getattr(q, c.name) for c in WrongQuestion.__table__.columns} for q in questions]
-    for q in result:
-        q['today_result'] = today_results.get(q['id'])
-    return jsonify({'date': target_date, 'questions': result})
+    
+    result_questions = []
+    for q in questions:
+        result_questions.append({
+            **{c.name: getattr(q, c.name) for c in WrongQuestion.__table__.columns},
+            'today_result': today_results.get(q.id)
+        })
+    
+    return jsonify({
+        'date': target_date,
+        'questions': result_questions
+    })
 
 @app.route('/api/daily-practice/refresh', methods=['POST'])
 def refresh_daily_practice():
     today = str(date.today())
     count = int(get_setting('daily_count', DAILY_COUNT_DEFAULT))
     session = get_session()
-    session.query(DailyPractice).filter_by(date=today).delete()
+    
+    dp = session.query(DailyPractice).filter_by(date=today).first()
+    if dp:
+        session.delete(dp)
+    
+    unmastered = session.query(WrongQuestion).filter(WrongQuestion.mastered == 0).all()
+    if len(unmastered) <= count:
+        questions = unmastered
+    else:
+        weights = []
+        for q in unmastered:
+            base_weight = q.wrong_count * 2
+            if q.last_wrong_date:
+                try:
+                    days_since_wrong = (date.today() - datetime.strptime(q.last_wrong_date, '%Y-%m-%d').date()).days
+                    recency_weight = max(0, 10 - days_since_wrong)
+                except:
+                    recency_weight = 10
+            else:
+                recency_weight = 10
+            weights.append(base_weight + recency_weight)
+        indices = random.choices(range(len(unmastered)), weights=weights, k=count)
+        questions = [unmastered[i] for i in sorted(set(indices))]
+    
+    dp = DailyPractice(date=today, questions=json.dumps([q.id for q in questions]))
+    session.add(dp)
     session.commit()
-    return get_daily_practice()
+    
+    return jsonify({
+        'date': today,
+        'questions': [{c.name: getattr(q, c.name) for c in WrongQuestion.__table__.columns} for q in questions]
+    })
 
 @app.route('/api/daily-practice/dates', methods=['GET'])
 def get_practice_dates():
     session = get_session()
     dates = [dp.date for dp in session.query(DailyPractice).order_by(DailyPractice.date.desc()).all()]
     return jsonify(dates)
-
-@app.route('/api/practice-result', methods=['POST'])
-def submit_practice_result():
-    data = request.get_json()
-    qid = data['question_id']
-    result = data['result']
-    error_type = data.get('error_type', '')
-    time_spent = data.get('time_spent', 0)
-    session = get_session()
-    q = session.query(WrongQuestion).get(qid)
-    if not q:
-        return jsonify({'error': '题目不存在'}), 404
-    q.last_practice_date = str(date.today())
-    if result == 'correct':
-        q.consecutive_correct += 1
-        if q.consecutive_correct >= MASTER_THRESHOLD:
-            q.mastered = 1
-    else:
-        q.consecutive_correct = 0
-        q.mastered = 0
-        q.wrong_count += 1
-        q.last_wrong_date = str(date.today())
-    session.add(PracticeResult(
-        question_id=qid, date=str(date.today()), result=result, 
-        error_type=error_type, time_spent=time_spent
-    ))
-    session.commit()
-    return jsonify({'ok': True, 'mastered': q.mastered})
 
 @app.route('/api/targeted-practice', methods=['POST'])
 def get_targeted_practice():
@@ -685,8 +683,10 @@ def get_targeted_practice():
     difficulty = data.get('difficulty', '')
     question_type = data.get('question_type', '')
     count = data.get('count', 15)
+    
     session = get_session()
     query = session.query(WrongQuestion).filter(WrongQuestion.mastered == 0)
+    
     if subject:
         query = query.filter(WrongQuestion.subject == subject)
     if chapter:
@@ -699,20 +699,33 @@ def get_targeted_practice():
         query = query.filter(WrongQuestion.difficulty == difficulty)
     if question_type:
         query = query.filter(WrongQuestion.question_type == question_type)
+    
     available = query.all()
     total_available = len(available)
-    if len(available) <= count:
+    
+    if total_available <= count:
         questions = available
     else:
-        weights = [calculate_ebbinghaus_score(q) for q in available]
+        weights = []
+        for q in available:
+            base_weight = q.wrong_count * 2
+            if q.last_wrong_date:
+                try:
+                    days_since_wrong = (date.today() - datetime.strptime(q.last_wrong_date, '%Y-%m-%d').date()).days
+                    recency_weight = max(0, 10 - days_since_wrong)
+                except:
+                    recency_weight = 10
+            else:
+                recency_weight = 10
+            weights.append(base_weight + recency_weight)
         indices = random.choices(range(len(available)), weights=weights, k=count)
         questions = [available[i] for i in sorted(set(indices))]
+    
     return jsonify({
         'total_available': total_available,
         'questions': [{c.name: getattr(q, c.name) for c in WrongQuestion.__table__.columns} for q in questions]
     })
 
-# ═══ 学习数据可视化 ═══
 @app.route('/api/stats/overview', methods=['GET'])
 def get_stats_overview():
     subject = request.args.get('subject', '')
@@ -722,13 +735,25 @@ def get_stats_overview():
         query = query.filter(WrongQuestion.subject == subject)
     total = query.count()
     mastered = query.filter(WrongQuestion.mastered == 1).count()
+    remaining = total - mastered
+    
     today = str(date.today())
-    today_practice = session.query(PracticeResult).filter(PracticeResult.date == today).count()
+    q_ids = [q.id for q in query.all()]
+    today_practice = session.query(PracticeResult).filter(
+        PracticeResult.date == today,
+        PracticeResult.question_id.in_(q_ids)
+    ).count()
+    
+    total_practice = session.query(PracticeResult).filter(
+        PracticeResult.question_id.in_(q_ids)
+    ).count()
+    
     return jsonify({
         'total': total,
         'mastered': mastered,
-        'remaining': total - mastered,
-        'today_practice': today_practice
+        'remaining': remaining,
+        'today_practice': today_practice,
+        'total_practice': total_practice
     })
 
 @app.route('/api/stats/error-types', methods=['GET'])
@@ -770,21 +795,22 @@ def get_heatmap_data():
         total = q_query.count()
         mastered = q_query.filter(WrongQuestion.mastered == 1).count()
         mastery_pct = round(mastered / total * 100) if total > 0 else 0
-        error_types = {}
-        wrong_results = session.query(PracticeResult).filter(PracticeResult.result == 'wrong').all()
-        for r in wrong_results:
+        
+        error_type_query = session.query(PracticeResult).filter(
+            PracticeResult.result == 'wrong'
+        )
+        error_types = defaultdict(int)
+        for r in error_type_query.all():
             q = session.query(WrongQuestion).get(r.question_id)
-            if q and q.chapter == ch:
-                if subject and q.subject != subject:
-                    continue
-                etype = r.error_type if r.error_type else 'unknown'
-                error_types[etype] = error_types.get(etype, 0) + 1
+            if q and q.chapter == ch and (not subject or q.subject == subject):
+                error_types[r.error_type or 'unknown'] += 1
+        
         result.append({
             'chapter': ch,
             'total': total,
             'mastered': mastered,
             'mastery_pct': mastery_pct,
-            'error_types': error_types
+            'error_types': dict(error_types)
         })
     return jsonify({'chapters': result})
 
@@ -795,30 +821,43 @@ def get_diagnosis():
     query = session.query(WrongQuestion)
     if subject:
         query = query.filter(WrongQuestion.subject == subject)
+    
     total = query.count()
     mastered = query.filter(WrongQuestion.mastered == 1).count()
-    remaining = total - mastered
+    
+    today = str(date.today())
+    last_7_days = [(date.today() - timedelta(days=i)).strftime('%Y-%m-%d') for i in range(7)]
+    
+    q_ids = [q.id for q in query.all()]
     recent_results = session.query(PracticeResult).filter(
-        PracticeResult.date >= str(date.today() - timedelta(days=7))
+        PracticeResult.date.in_(last_7_days),
+        PracticeResult.question_id.in_(q_ids)
     ).all()
-    correct_count = sum(1 for r in recent_results if r.result == 'correct')
-    total_recent = len(recent_results)
-    recent_accuracy = round(correct_count / total_recent * 100) if total_recent > 0 else 0
-    total_minutes = 0
-    days_studied = 0
+    
+    recent_correct = sum(1 for r in recent_results if r.result == 'correct')
+    recent_total = len(recent_results)
+    recent_accuracy = round(recent_correct / recent_total * 100) if recent_total > 0 else 0
+    
+    all_dates = sorted(set(r.date for r in recent_results))
+    days_studied = len(all_dates)
+    
     suggestions = []
-    if remaining > 0:
-        suggestions.append(f'还有 {remaining} 道错题待攻克，继续加油！')
-    if recent_accuracy < 60:
-        suggestions.append('近期正确率较低，建议重点复习薄弱章节')
-    elif recent_accuracy >= 80:
-        suggestions.append('近期正确率良好，继续保持！')
-    if total_minutes < 30:
-        suggestions.append('学习时长较短，建议每天至少练习30分钟')
+    if total == 0:
+        suggestions.append('开始添加错题，建立你的错题本')
+    else:
+        if mastered == 0:
+            suggestions.append('还没有掌握任何题目，开始练习吧')
+        if mastered < total * 0.3:
+            suggestions.append('掌握率较低，建议增加练习频率')
+        if recent_accuracy < 50:
+            suggestions.append('近期正确率较低，注意分析错误原因')
+        if days_studied < 3:
+            suggestions.append('本周练习天数较少，保持每天练习习惯')
+    
     return jsonify({
         'overall': {'total': total, 'mastered': mastered},
         'recent_accuracy': recent_accuracy,
-        'time_stats': {'total_minutes': total_minutes, 'days_studied': days_studied},
+        'time_stats': {'total_minutes': 0, 'days_studied': days_studied},
         'suggestions': suggestions
     })
 
@@ -829,100 +868,77 @@ def get_prediction():
     query = session.query(WrongQuestion)
     if subject:
         query = query.filter(WrongQuestion.subject == subject)
+    
     total = query.count()
     mastered = query.filter(WrongQuestion.mastered == 1).count()
     remaining = total - mastered
-    if remaining == 0:
-        return jsonify({
-            'remaining': 0,
-            'predicted_days': 0,
-            'prediction_date': None,
-            'trend': 'steady',
-            'trend_label': '已完成',
-            'daily_avg_mastered': 0,
-            'daily_avg_practiced': 0,
-            'needed_per_day': 0,
-            'target_days': 30
-        })
+    
     all_results = session.query(PracticeResult).all()
-    if len(all_results) < 5:
-        return jsonify({
-            'remaining': remaining,
-            'predicted_days': -1,
-            'prediction_date': None,
-            'trend': 'steady',
-            'trend_label': '数据不足',
-            'daily_avg_mastered': 0,
-            'daily_avg_practiced': 0,
-            'needed_per_day': 0,
-            'target_days': 30
-        })
-    date_counts = Counter(r.date for r in all_results)
-    days_with_practice = len(date_counts)
-    daily_avg_practiced = round(len(all_results) / days_with_practice)
-    correct_results = [r for r in all_results if r.result == 'correct']
-    date_correct_counts = Counter(r.date for r in correct_results)
-    daily_avg_mastered = round(len(correct_results) / days_with_practice) if days_with_practice > 0 else 0
-    predicted_days = math.ceil(remaining / daily_avg_mastered) if daily_avg_mastered > 0 else 999
-    prediction_date = date.today() + timedelta(days=predicted_days)
-    recent_week = [str(date.today() - timedelta(days=i)) for i in range(7)]
-    recent_counts = [date_counts.get(d, 0) for d in recent_week]
-    prev_week = [str(date.today() - timedelta(days=i)) for i in range(7, 14)]
-    prev_counts = [date_counts.get(d, 0) for d in prev_week]
-    recent_avg = sum(recent_counts) / 7
-    prev_avg = sum(prev_counts) / 7 if prev_counts else 0
-    trend = 'steady'
-    trend_label = '稳定'
-    if recent_avg > prev_avg * 1.3:
-        trend = 'accelerating'
-        trend_label = '进步中'
-    elif recent_avg < prev_avg * 0.7:
-        trend = 'slowing'
-        trend_label = '需加油'
-    exam_date_str = get_setting('exam_date', '')
+    q_ids = [q.id for q in query.all()]
+    subject_results = [r for r in all_results if r.question_id in q_ids]
+    
+    dates = sorted(set(r.date for r in subject_results))
+    if len(dates) >= 7:
+        recent_dates = dates[-7:]
+        recent_correct = sum(1 for r in subject_results if r.date in recent_dates and r.result == 'correct')
+        daily_avg_mastered = round(recent_correct / 7)
+    else:
+        daily_avg_mastered = 1
+    
+    if remaining > 0 and daily_avg_mastered > 0:
+        predicted_days = math.ceil(remaining / daily_avg_mastered)
+        prediction_date = date.today() + timedelta(days=predicted_days)
+    else:
+        predicted_days = 0
+        prediction_date = None
+    
+    if len(dates) >= 14:
+        early_dates = dates[:-7]
+        late_dates = dates[-7:]
+        early_correct = sum(1 for r in subject_results if r.date in early_dates and r.result == 'correct')
+        late_correct = sum(1 for r in subject_results if r.date in late_dates and r.result == 'correct')
+        if early_correct > 0 and late_correct > 0:
+            trend = 'accelerating' if late_correct > early_correct else 'slowing' if late_correct < early_correct else 'steady'
+        else:
+            trend = 'steady'
+    else:
+        trend = 'steady'
+    
+    trend_labels = {
+        'accelerating': '进步加速中',
+        'slowing': '进步放缓',
+        'steady': '保持稳定'
+    }
+    
     target_days = 30
-    needed_per_day = 0
-    if exam_date_str:
-        try:
-            exam_date = datetime.strptime(exam_date_str, '%Y-%m-%d').date()
-            target_days = max(1, (exam_date - date.today()).days)
-            needed_per_day = math.ceil(remaining / target_days)
-        except:
-            pass
+    needed_per_day = math.ceil(remaining / target_days) if remaining > 0 else 0
+    
     chapter_predictions = []
-    ch_query = session.query(WrongQuestion.chapter).distinct()
-    if subject:
-        ch_query = ch_query.filter(WrongQuestion.subject == subject)
-    chapters = ch_query.order_by(WrongQuestion.chapter).all()
+    chapters = query.filter(WrongQuestion.chapter != '').group_by(WrongQuestion.chapter).all()
     for ch in chapters:
-        ch_name = ch[0]
-        if not ch_name:
-            continue
-        q_ch_query = session.query(WrongQuestion).filter(WrongQuestion.chapter == ch_name)
-        if subject:
-            q_ch_query = q_ch_query.filter(WrongQuestion.subject == subject)
-        ch_total = q_ch_query.count()
-        ch_mastered = q_ch_query.filter(WrongQuestion.mastered == 1).count()
-        ch_remaining = ch_total - ch_mastered
-        if ch_remaining > 0 and daily_avg_mastered > 0:
-            ch_days = math.ceil(ch_remaining / daily_avg_mastered)
-            ch_pred_date = date.today() + timedelta(days=ch_days)
+        ch_query = query.filter(WrongQuestion.chapter == ch.chapter)
+        ch_total = ch_query.count()
+        ch_mastered = ch_query.filter(WrongQuestion.mastered == 1).count()
+        if ch_total > 0:
+            ch_remaining = ch_total - ch_mastered
+            ch_predicted_days = math.ceil(ch_remaining / max(daily_avg_mastered, 1))
+            ch_prediction_date = date.today() + timedelta(days=ch_predicted_days)
             chapter_predictions.append({
-                'chapter': ch_name,
+                'chapter': ch.chapter,
                 'total': ch_total,
                 'mastered': ch_mastered,
-                'prediction_date': str(ch_pred_date)
+                'prediction_date': ch_prediction_date.isoformat()
             })
+    
     return jsonify({
         'remaining': remaining,
         'predicted_days': predicted_days,
-        'prediction_date': str(prediction_date),
-        'trend': trend,
-        'trend_label': trend_label,
+        'prediction_date': prediction_date.isoformat() if prediction_date else None,
         'daily_avg_mastered': daily_avg_mastered,
-        'daily_avg_practiced': daily_avg_practiced,
-        'needed_per_day': needed_per_day,
+        'trend': trend,
+        'trend_label': trend_labels.get(trend, '稳定'),
         'target_days': target_days,
+        'needed_per_day': needed_per_day,
         'chapter_predictions': chapter_predictions
     })
 
@@ -935,26 +951,48 @@ def get_trends():
     trend_data = []
     mastery_trend = []
     duration_trend = []
+    
     q_query = session.query(WrongQuestion)
     if subject:
         q_query = q_query.filter(WrongQuestion.subject == subject)
+    
     for i in range(days, 0, -1):
         d = str(date.today() - timedelta(days=i))
-        results = session.query(PracticeResult).filter(PracticeResult.date == d).all()
+        
+        q_ids = [q.id for q in q_query.all()]
+        results = session.query(PracticeResult).filter(
+            PracticeResult.date == d,
+            PracticeResult.question_id.in_(q_ids)
+        ).all()
+        
         correct = sum(1 for r in results if r.result == 'correct')
         wrong = sum(1 for r in results if r.result == 'wrong')
         accuracy = round(correct / (correct + wrong) * 100) if (correct + wrong) > 0 else 0
+        
         trend_data.append({
             'date': d,
             'correct': correct,
             'wrong': wrong,
             'accuracy': accuracy
         })
+        
         total = q_query.count()
         mastered = q_query.filter(WrongQuestion.mastered == 1).count()
         pct = round(mastered / total * 100) if total > 0 else 0
         mastery_trend.append({'date': d, 'pct': pct})
         duration_trend.append({'date': d, 'minutes': 0})
+    
+    mastery_trend = mastery_trend[-7:]
+    duration_trend = duration_trend[-7:]
+    
+    mastery_trend_values = [d['pct'] for d in mastery_trend]
+    if len(mastery_trend_values) >= 2:
+        mastery_trend = 'up' if mastery_trend_values[-1] > mastery_trend_values[0] else 'down' if mastery_trend_values[-1] < mastery_trend_values[0] else 'stable'
+    else:
+        mastery_trend = 'stable'
+    
+    duration_trend = 'stable'
+    
     return jsonify({
         'trend': trend_data,
         'mastery_trend': mastery_trend,
@@ -1024,6 +1062,7 @@ def get_deep_analysis():
                     pass
     
     regression_rate = round(regressed_count / len(questions) * 100) if questions else 0
+    
     curve_data = []
     for i in range(1, 31):
         retention = max(20, 100 - i * 2.5 - random.uniform(0, 5))
@@ -1126,32 +1165,32 @@ def get_deep_analysis():
                 'day': day_name,
                 'chapter': '休息',
                 'question_count': 0,
-                'focus_error': '休息',
+                'focus_error': '',
                 'type': 'rest',
                 'tips': '适当休息，保持状态'
             })
     
     return jsonify({
-        'cross_analysis': {'findings': cross_findings, 'dimensions': cross_dimensions},
-        'forgetting_curve': {
-            'total_regressed': regressed_count,
-            'regression_rate': regression_rate,
-            'curve_data': curve_data,
-            'forgetting_intervals': forgetting_intervals,
-            'forgetting_by_chapter': forgetting_by_chapter,
-            'forgetting_by_tag': forgetting_by_tag,
-            'regressed_questions': regressed_questions[:10]
+        'cross_analysis': {
+            'dimensions': cross_dimensions,
+            'findings': cross_findings
         },
+        'regression_rate': regression_rate,
+        'regressed_questions': regressed_questions[:10],
+        'forgetting_curve': curve_data,
+        'forgetting_intervals': forgetting_intervals,
+        'forgetting_by_chapter': forgetting_by_chapter,
+        'forgetting_by_tag': forgetting_by_tag,
         'efficiency': {
             'total_minutes': total_minutes,
             'avg_daily_questions': avg_daily_questions,
             'efficiency_trend': efficiency_trend,
-            'early_avg_accuracy': early_accuracy,
-            'late_avg_accuracy': late_accuracy,
-            'early_avg_speed': early_speed,
-            'late_avg_speed': late_speed,
             'best_period': best_period,
-            'peak_periods': periods[:6]
+            'early_accuracy': early_accuracy,
+            'late_accuracy': late_accuracy,
+            'early_speed': early_speed,
+            'late_speed': late_speed,
+            'periods': periods[:5]
         },
         'action_plan': action_plan
     })
@@ -1273,25 +1312,25 @@ def get_weekly_report():
         if not best_day or day_acc > best_day['accuracy']:
             best_day = {'date': d, 'accuracy': day_acc}
     
-    score = min(100, accuracy + days_studied * 2 + min(mastered_count, 50))
-    if score >= 90:
-        grade = 'S'
-    elif score >= 80:
+    grade = 'C'
+    if accuracy >= 80:
         grade = 'A'
-    elif score >= 60:
+    elif accuracy >= 60:
         grade = 'B'
-    else:
-        grade = 'C'
+    
+    score = accuracy
     
     commentary = []
     if accuracy >= 80:
-        commentary.append('本周表现优秀，正确率很高！')
+        commentary.append('本周表现优秀！继续保持！')
     elif accuracy >= 60:
-        commentary.append('本周表现良好，继续加油！')
+        commentary.append('本周表现良好，还有提升空间')
     else:
-        commentary.append('本周正确率有待提高，建议加强练习')
+        commentary.append('本周需要加强练习，分析错误原因')
     if days_studied >= 5:
-        commentary.append('坚持练习，非常棒！')
+        commentary.append('练习频率很高，保持！')
+    elif days_studied < 3:
+        commentary.append('建议增加练习天数')
     
     return jsonify({
         'grade': grade,
@@ -1353,73 +1392,64 @@ def get_goal_plan():
         urgent_message = '按计划推进即可'
     else:
         urgent_level = 'relaxed'
-        urgent_message = '时间充裕，稳扎稳打'
+        urgent_message = '时间充裕，稳步推进'
     
     milestones = []
-    for i in range(4):
-        m_days = remaining_days * (i + 1) // 4
-        m_date = date.today() + timedelta(days=m_days)
-        m_pct = min(25 * (i + 1), 100)
-        milestones.append({
-            'date': str(m_date),
-            'target_pct': m_pct,
-            'label': f'完成{m_pct}%'
-        })
+    if remaining_days > 0:
+        for i in [0.25, 0.5, 0.75, 1]:
+            milestone_day = date.today() + timedelta(days=round(remaining_days * i))
+            target_pct = round(i * 100)
+            milestones.append({
+                'date': milestone_day.isoformat(),
+                'target_pct': target_pct,
+                'label': f'完成 {target_pct}%'
+            })
     
     chapter_plan = []
-    chapters = session.query(WrongQuestion.chapter).distinct().order_by(WrongQuestion.chapter).all()
+    chapters = query.filter(WrongQuestion.chapter != '').group_by(WrongQuestion.chapter).all()
     for ch in chapters:
-        ch_name = ch[0]
-        if not ch_name:
-            continue
-        ch_total = session.query(WrongQuestion).filter(WrongQuestion.chapter == ch_name).count()
-        ch_mastered = session.query(WrongQuestion).filter(
-            WrongQuestion.chapter == ch_name, WrongQuestion.mastered == 1
-        ).count()
-        ch_pct = round(ch_mastered / ch_total * 100) if ch_total > 0 else 0
+        ch_query = query.filter(WrongQuestion.chapter == ch.chapter)
+        ch_total = ch_query.count()
+        ch_mastered = ch_query.filter(WrongQuestion.mastered == 1).count()
         ch_remaining = ch_total - ch_mastered
-        ch_daily = math.ceil(ch_remaining / remaining_days) if remaining_days > 0 else 0
+        ch_mastery_pct = round(ch_mastered / ch_total * 100) if ch_total > 0 else 0
         
-        urgency = 'ok'
-        if ch_pct < 40:
+        if ch_mastery_pct < 40:
             urgency = 'critical'
-        elif ch_pct < 70:
+        elif ch_mastery_pct < 70:
             urgency = 'warning'
+        else:
+            urgency = 'ok'
+        
+        if remaining_days > 0 and ch_remaining > 0:
+            daily_suggest = math.ceil(ch_remaining / remaining_days)
+        else:
+            daily_suggest = 0
         
         chapter_plan.append({
-            'chapter': ch_name,
+            'chapter': ch.chapter,
             'total': ch_total,
             'mastered': ch_mastered,
-            'mastery_pct': ch_pct,
-            'daily_suggest': ch_daily,
-            'urgency': urgency
+            'mastery_pct': ch_mastery_pct,
+            'urgency': urgency,
+            'daily_suggest': daily_suggest
         })
+    
+    chapter_plan.sort(key=lambda x: x['mastery_pct'])
     
     return jsonify({
         'set': True,
+        'exam_date': exam_date_str,
         'remaining_days': remaining_days,
-        'remaining_questions': remaining_questions,
-        'overall_pct': overall_pct,
-        'daily_target': daily_target,
-        'review_daily': review_daily,
         'urgent_level': urgent_level,
         'urgent_message': urgent_message,
+        'overall_pct': overall_pct,
+        'remaining_questions': remaining_questions,
+        'daily_target': daily_target,
+        'review_daily': review_daily,
         'milestones': milestones,
         'chapter_plan': chapter_plan
     })
-
-@app.route('/api/tags', methods=['GET'])
-def get_tags():
-    session = get_session()
-    questions = session.query(WrongQuestion).filter(WrongQuestion.knowledge_tags != '').all()
-    tags = set()
-    for q in questions:
-        if q.knowledge_tags:
-            for tag in q.knowledge_tags.split(','):
-                t = tag.strip()
-                if t:
-                    tags.add(t)
-    return jsonify(sorted(list(tags)))
 
 @app.route('/api/questions/batch-delete', methods=['POST'])
 def batch_delete_questions():
@@ -1431,80 +1461,7 @@ def batch_delete_questions():
         if q:
             session.delete(q)
     session.commit()
-    return jsonify({'ok': True, 'deleted': len(ids)})
-
-@app.route('/api/reset-mastered', methods=['POST'])
-def reset_mastered():
-    session = get_session()
-    session.query(WrongQuestion).update({WrongQuestion.mastered: 0, WrongQuestion.consecutive_correct: 0})
-    session.commit()
     return jsonify({'ok': True})
-
-@app.route('/api/settings', methods=['POST'])
-def save_settings():
-    data = request.get_json()
-    session = get_session()
-    for key, value in data.items():
-        s = session.query(Setting).filter_by(key=key).first()
-        if s:
-            s.value = str(value)
-        else:
-            session.add(Setting(key=key, value=str(value)))
-    session.commit()
-    return jsonify({'ok': True})
-
-@app.route('/api/sync/export', methods=['GET'])
-def sync_export():
-    session = get_session()
-    questions = session.query(WrongQuestion).all()
-    results = session.query(PracticeResult).all()
-    settings = session.query(Setting).all()
-    return jsonify({
-        'wrong_questions': [{c.name: getattr(q, c.name) for c in WrongQuestion.__table__.columns} for q in questions],
-        'practice_results': [{c.name: getattr(r, c.name) for c in PracticeResult.__table__.columns} for r in results],
-        'settings': [{c.name: getattr(s, c.name) for c in Setting.__table__.columns} for s in settings]
-    })
-
-@app.route('/api/sync/import', methods=['POST'])
-def sync_import():
-    data = request.get_json()
-    session = get_session()
-    imported = 0
-    updated = 0
-    
-    for q in data.get('wrong_questions', []):
-        existing = session.query(WrongQuestion).filter(
-            WrongQuestion.question_number == q.get('question_number', ''),
-            WrongQuestion.chapter == q.get('chapter', ''),
-            WrongQuestion.section == q.get('section', '')
-        ).first()
-        if existing:
-            for key, value in q.items():
-                if key != 'id':
-                    setattr(existing, key, value)
-            updated += 1
-        else:
-            session.add(WrongQuestion(**q))
-            imported += 1
-    
-    for r in data.get('practice_results', []):
-        existing = session.query(PracticeResult).filter(
-            PracticeResult.question_id == r.get('question_id', 0),
-            PracticeResult.date == r.get('date', ''),
-            PracticeResult.result == r.get('result', '')
-        ).first()
-        if not existing:
-            session.add(PracticeResult(**r))
-    
-    for s in data.get('settings', []):
-        existing = session.query(Setting).filter_by(key=s.get('key')).first()
-        if existing:
-            existing.value = s.get('value', '')
-        else:
-            session.add(Setting(**s))
-    
-    session.commit()
-    return jsonify({'ok': True, 'questions_imported': imported, 'questions_updated': updated})
 
 @app.route('/api/export/pdf', methods=['GET'])
 def export_pdf():
@@ -1541,13 +1498,16 @@ def export_pdf():
             pdf_content += f"  备注: {q.note}\n"
         if q.knowledge_tags:
             pdf_content += f"  标签: {q.knowledge_tags}\n"
-        pdf_content += "-" * 60 + "\n"
     
-    return Response(
-        pdf_content,
-        mimetype='application/pdf',
-        headers={'Content-Disposition': f'attachment; filename=wrong_questions_{date.today()}.pdf'}
-    )
+    pdf_content += "\n================================================================================\n"
+    pdf_content += "导出完成"
+    
+    return Response(pdf_content, mimetype='application/pdf', headers={'Content-Disposition': 'attachment; filename=wrong_questions.pdf'})
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
+@app.route('/api/export', methods=['GET'])
+def export_all():
+    session = get_session()
+    questions = session.query(WrongQuestion).order_by(WrongQuestion.chapter, WrongQuestion.section, WrongQuestion.question_number).all()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['题号', '章节', '小节', '来源', '备注', '错误次数', '连续正确', '是否掌握', '添加日期', '最后错误日期', '错误类型', '知识点标签', '难度',
