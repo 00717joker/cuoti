@@ -1510,4 +1510,11 @@ def export_all():
     questions = session.query(WrongQuestion).order_by(WrongQuestion.chapter, WrongQuestion.section, WrongQuestion.question_number).all()
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['题号', '章节', '小节', '来源', '备注', '错误次数', '连续正确', '是否掌握', '添加日期', '最后错误日期', '错误类型', '知识点标签', '难度',
+    writer.writerow(['题号', '章节', '小节', '来源', '备注', '错误次数', '连续正确', '是否掌握', '添加日期', '最后错误日期', '错误类型', '知识点标签', '难度', '题型'])
+    for q in questions:
+        writer.writerow([q.question_number, q.chapter, q.section, q.source, q.note, q.wrong_count, q.consecutive_correct, q.mastered, q.date_added, q.last_wrong_date, q.error_type, q.knowledge_tags, q.difficulty, q.question_type])
+    output.seek(0)
+    return Response(output, mimetype='text/csv', headers={'Content-Disposition': 'attachment; filename=wrong_questions_all.csv'})
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000, debug=False)
