@@ -191,9 +191,9 @@ def health():
         session = Session()
         session.execute(text('SELECT 1'))
         session.close()
-        return jsonify({'status': 'healthy', 'database': 'connected', 'version': '3.2.0'})
+        return jsonify({'status': 'healthy', 'database': 'connected', 'version': '3.3.0', 'feature': 'subject-tabs-enabled'})
     except Exception as e:
-        return jsonify({'status': 'unhealthy', 'error': str(e), 'version': '3.2.0'}), 503
+        return jsonify({'status': 'unhealthy', 'error': str(e), 'version': '3.3.0'}), 503
 
 def get_setting(key, default=None):
     session = get_session()
