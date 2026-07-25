@@ -424,6 +424,13 @@ header p{font-size:.75rem;margin-top:2px}
 .toast.err::before{content:'✗'}
 .toast.info::before{content:'ℹ'}
 
+/* 科目切换 */
+.subject-tabs{display:flex;gap:8px;margin-bottom:16px;background:var(--card);border-radius:var(--r);padding:6px;box-shadow:var(--sh-md)}
+.subject-btn{flex:1;padding:10px 12px;border:none;background:0;border-radius:var(--r-sm);cursor:pointer;font-size:.82rem;font-weight:600;color:var(--t2);transition:var(--transition);display:flex;align-items:center;justify-content:center;gap:6px}
+.subject-btn.active{background:linear-gradient(135deg,var(--pri),var(--pri-dark));color:#fff;box-shadow:0 2px 8px rgba(99,102,241,.35)}
+.subject-btn:hover{color:var(--pri)}
+.subject-btn:active{transform:scale(.96)}
+
 /* 筛选标签 */
 .filter-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
 .filter-tag{padding:6px 12px;border-radius:20px;font-size:.75rem;border:1.5px solid var(--bd);background:var(--card);cursor:pointer;transition:var(--transition);color:var(--t2)}
@@ -465,6 +472,11 @@ header p{font-size:.75rem;margin-top:2px}
 <div class="st"><div class="n" id="stRemain">--</div><div class="l">待攻克</div></div>
 <div class="st m"><div class="n" id="stMastered">--</div><div class="l">已掌握</div></div>
 <div class="st a"><div class="n" id="stToday">--</div><div class="l">今日练习</div></div>
+</div>
+<div class="subject-tabs" id="subjectTabs">
+<button class="subject-btn active" data-subject="math" onclick="switchSubject('math')">📐 高数</button>
+<button class="subject-btn" data-subject="linear" onclick="switchSubject('linear')">📊 线代</button>
+<button class="subject-btn" data-subject="prob" onclick="switchSubject('prob')">📈 概率</button>
 </div>
 <div class="tabs" id="desktopTabs">
 <button class="tab active" data-tab="add">+ 添加</button>
@@ -827,6 +839,8 @@ const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
 let tt,ocrItems=[],ocrW=null,st=null,pendingMarkQid=null;
 const ETYPES={careless:'粗心失误',concept:'概念不清',calculation:'计算错误',method:'方法不会'};
 const ECLASS={careless:'badge-careless',concept:'badge-concept',calculation:'badge-calculation',method:'badge-method'};
+let currentSubject='math';
+const SUBJECT_LABELS={math:'高数',linear:'线代',prob:'概率'};
 
 function toast(m,c=''){
 const t=$('#toast');
@@ -837,6 +851,18 @@ tt=setTimeout(()=>{t.classList.remove('show')},2500);
 }
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
 function todayStr(){return new Date().toISOString().slice(0,10)}
+
+// 科目切换
+function switchSubject(subject){
+  currentSubject=subject;
+  $$('.subject-btn').forEach(b=>b.classList.toggle('active',b.dataset.subject===subject));
+  refreshStats();
+  const activeTab=$('.tab.active')?.dataset.tab;
+  if(activeTab==='bank')loadBank();
+  if(activeTab==='practice')loadPractice();
+  if(activeTab==='targeted')loadTargetedForm();
+  if(activeTab==='stats')loadStats();
+}
 
 // API
 async function api(u,o={}){
@@ -889,7 +915,7 @@ async function addSingle(){
 const qn=$('#singleQn').value.trim(),ch=$('#singleCh').value.trim();
 if(!qn||!ch){toast('题号和章节不能为空','err');return}
 const tags=getCurrentTags().join(',');
-const item={question_number:qn,chapter:ch,section:$('#singleSec').value.trim(),source:$('#singleSrc').value.trim(),error_type:$('#singleEtype').value,difficulty:$('#singleDifficulty').value,question_type:$('#singleQtype').value,knowledge_tags:tags,note:$('#singleNote').value.trim()};
+const item={subject:currentSubject,question_number:qn,chapter:ch,section:$('#singleSec').value.trim(),source:$('#singleSrc').value.trim(),error_type:$('#singleEtype').value,difficulty:$('#singleDifficulty').value,question_type:$('#singleQtype').value,knowledge_tags:tags,note:$('#singleNote').value.trim()};
 if(window.currentImgData)item.image_data=window.currentImgData;
 const r=await api('/api/questions',{method:'POST',body:JSON.stringify(item)});
 if(r&&r.added!==undefined){toast('添加成功','ok');$('#singleQn').value='';$('#singleSrc').value='';$('#singleNote').value='';currentTags=[];renderTags();clearImgUpload();refreshStats()}else{toast('添加失败','err')}
@@ -897,7 +923,7 @@ if(r&&r.added!==undefined){toast('添加成功','ok');$('#singleQn').value='';$(
 
 async function addBatch(){
 const t=$('#batchInput').value.trim();if(!t){toast('请输入内容','err');return}
-const items=t.split('\n').filter(l=>l.trim()).map(line=>{const p=line.split(',').map(s=>s.trim());return{question_number:p[0]||'',chapter:p[1]||'',section:p[2]||'',source:p[3]||'',error_type:'',knowledge_tags:'',difficulty:'',question_type:'',note:''}});
+const items=t.split('\n').filter(l=>l.trim()).map(line=>{const p=line.split(',').map(s=>s.trim());return{subject:currentSubject,question_number:p[0]||'',chapter:p[1]||'',section:p[2]||'',source:p[3]||'',error_type:'',knowledge_tags:'',difficulty:'',question_type:'',note:''}});
 const r=await api('/api/questions',{method:'POST',body:JSON.stringify(items)});
 if(r)toast('添加 '+r.added+' 题，跳过 '+r.skipped+' 题','ok');
 $('#batchInput').value='';refreshStats();
@@ -971,7 +997,7 @@ window.currentImgData=null;
 // 练习
 async function loadPractice(){
 showPracticeSkeleton();
-const data=await api('/api/daily-practice');
+const data=await api('/api/daily-practice?subject='+currentSubject);
 if(!data){$('#practiceList').innerHTML='<div class="empty">加载失败</div>';return}
 $('#practiceDate').textContent=data.date||todayStr();
 checkPrevPractice();
@@ -1050,7 +1076,7 @@ $('#btnPrevPractice').textContent='📋 查看上次练习';
 async function loadPrevDate(){
 const d=$('#prevDateSel').value||prevPracticeDate;
 if(!d)return;
-const data=await api('/api/daily-practice?date='+d);
+const data=await api('/api/daily-practice?date='+d+'&subject='+currentSubject);
 if(!data)return;
 prevPracticeDate=d;$('#prevDateLabel').textContent=d;
 if(data.questions.length===0){$('#prevPracticeList').innerHTML='<div class="empty">该日期无练习记录</div>';$('#prevProgress').style.width='0%';$('#prevSummary').style.display='none';return}
@@ -1081,7 +1107,7 @@ await loadPrevDate();refreshStats();
 
 // 专项突破
 async function loadTargetedForm(){
-const qs=await api('/api/questions');if(!qs)return;
+const qs=await api('/api/questions?subject='+currentSubject);if(!qs)return;
 const chapters=[...new Set(qs.map(q=>q.chapter).filter(Boolean).sort())];
 $('#btChapter').innerHTML='<option value="">全部</option>'+chapters.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('');
 const data=await api('/api/tags');if(data){$('#btTag').innerHTML='<option value="">全部</option>'+data.map(t=>`<option value="${esc(t)}">${esc(t)}</option>`).join('')}
@@ -1089,7 +1115,7 @@ const data=await api('/api/tags');if(data){$('#btTag').innerHTML='<option value=
 
 let btQuestions=[],btResults={};
 async function loadTargetedPractice(){
-const body={chapter:$('#btChapter').value,error_type:$('#btEtype').value,tag:$('#btTag').value,difficulty:$('#btDifficulty').value,question_type:$('#btQtype').value,count:parseInt($('#btCount').value)||15};
+const body={subject:currentSubject,chapter:$('#btChapter').value,error_type:$('#btEtype').value,tag:$('#btTag').value,difficulty:$('#btDifficulty').value,question_type:$('#btQtype').value,count:parseInt($('#btCount').value)||15};
 const data=await api('/api/targeted-practice',{method:'POST',body:JSON.stringify(body)});
 if(!data||!data.questions){toast('加载失败','err');return}
 $('#btAvailable').textContent=`共 ${data.total_available} 道未掌握题目可用`;
@@ -1135,10 +1161,11 @@ let bankQuestions=[],bankPage=1,bankPageSize=10,bankFilterChapter='',bankFilterS
 function debounceSearch(){clearTimeout(st);st=setTimeout(()=>{bankPage=1;loadBank()},300)}
 async function loadBank(){
 const search=$('#searchBox').value.trim();
-bankQuestions=await api('/api/questions?chapter='+(bankFilterChapter||'')+'&search='+(search||''));
+bankQuestions=await api('/api/questions?subject='+currentSubject+'&chapter='+(bankFilterChapter||'')+'&search='+(search||''));
 if(!bankQuestions)return;
 renderBankFilters(bankQuestions);
 renderBankList();
+}
 initLazyLoad();
 }
 function renderBankFilters(questions){
@@ -1226,8 +1253,8 @@ const r=await api('/api/questions/batch-delete',{method:'POST',body:JSON.stringi
 if(r&&r.ok){toast('已删除','ok');loadBank();refreshStats()}
 }
 
-function exportCSV(){window.open('/api/export','_blank');toast('导出成功','ok')}
-function exportPDF(){window.open('/api/export/pdf','_blank');toast('正在生成PDF...','info');setTimeout(()=>toast('PDF导出成功','ok'),1500)}
+function exportCSV(){window.open('/api/export/csv?subject='+currentSubject,'_blank');toast('导出成功','ok')}
+function exportPDF(){window.open('/api/export/pdf?subject='+currentSubject,'_blank');toast('正在生成PDF...','info');setTimeout(()=>toast('PDF导出成功','ok'),1500)}
 
 // 统计
 async function loadStats(){
@@ -1235,7 +1262,7 @@ await Promise.all([loadErrorDist(),loadHeatmap(),loadDiagnosis(),loadTrends(),lo
 }
 
 async function loadErrorDist(){
-const data=await api('/api/stats/error-types');
+const data=await api('/api/stats/error-types?subject='+currentSubject);
 if(!data)return;
 const entries=(data.distribution||[]).filter(d=>d.type!=='unknown');
 entries.sort((a,b)=>b.count-a.count);
@@ -1246,7 +1273,7 @@ $('#etypeDist').innerHTML=eHtml||'<div class="empty">暂无数据</div>';
 }
 
 async function loadHeatmap(){
-const data=await api('/api/stats/heatmap');
+const data=await api('/api/stats/heatmap?subject='+currentSubject);
 if(!data||!data.chapters)return;
 $('#heatmapGrid').innerHTML=data.chapters.map(ch=>{
 let color=ch.mastery_pct>=70?'#10b981':ch.mastery_pct>=40?'#f59e0b':'#ef4444';
@@ -1256,7 +1283,7 @@ return`<div class="hm-row"><span class="hm-ch">${esc(ch.chapter)}</span><div cla
 }
 
 async function loadDiagnosis(){
-const data=await api('/api/stats/diagnosis');
+const data=await api('/api/stats/diagnosis?subject='+currentSubject);
 if(!data){$('#diagList').innerHTML='<li>加载失败</li>';return}
 $('#diagList').innerHTML=data.suggestions.length?data.suggestions.map(s=>`<li>${s}</li>`).join(''):'<li>继续保持，所有指标良好！</li>';
 $('#diagStats').innerHTML=`
@@ -1267,7 +1294,7 @@ $('#diagStats').innerHTML=`
 }
 
 async function loadPrediction(){
-const data=await api('/api/stats/prediction');
+const data=await api('/api/stats/prediction?subject='+currentSubject);
 if(!data){$('#predRow').innerHTML='<div class="empty">暂无数据</div>';return}
 const trendCls=data.trend==='accelerating'?'up':data.trend==='slowing'?'down':'steady';
 const trendIcon=data.trend==='accelerating'?'🚀':data.trend==='slowing'?'⚡':'✅';
@@ -1296,7 +1323,7 @@ return`<div class="pred-ch"><span class="pch-name">${esc(ch.chapter)}</span><div
 }
 
 async function loadDeepAnalysis(){
-const data=await api('/api/stats/deep-analysis');
+const data=await api('/api/stats/deep-analysis?subject='+currentSubject);
 if(!data){$('#deepAnalysis').style.display='none';return}
 $('#deepAnalysis').style.display='';
 
@@ -1381,7 +1408,7 @@ return`<div class="plan-day ${cls}"><div class="pd-day">${d.day}</div><div class
 }
 
 async function loadClusters(){
-const data=await api('/api/stats/clusters');
+const data=await api('/api/stats/clusters?subject='+currentSubject);
 if(!data||!data.alerts||data.alerts.length===0){$('#clusterAlerts').innerHTML='<div style="font-size:.7rem;color:var(--t2);padding:4px 0">'+ (data&&data.message?data.message:'近7天无显著错误聚类模式')+'</div>';return}
 $('#clusterSubtitle').textContent=data.message||'近7天错误智能聚类';
 $('#clusterAlerts').innerHTML=data.alerts.map(a=>{
@@ -1392,7 +1419,7 @@ return`<div class="cluster-alert ${a.level}"><div class="ca-icon">${icon}</div><
 }
 
 async function loadWeeklyReport(){
-const data=await api('/api/stats/weekly-report');
+const data=await api('/api/stats/weekly-report?subject='+currentSubject);
 if(!data||data.stats.total_questions===0){$('#reportCard').style.display='none';return}
 $('#reportCard').style.display='';
 $('#reportGrade').textContent=data.grade;$('#reportGrade').className='report-grade '+data.grade;
@@ -1414,7 +1441,7 @@ $('#reportWorst').innerHTML=worst.length?worst.map(w=>`<span>${w}</span>`).join(
 }
 
 async function loadGoalPlan(){
-const data=await api('/api/stats/goal-plan');
+const data=await api('/api/stats/goal-plan?subject='+currentSubject);
 if(!data||!data.set){$('#goalCard').style.display='none';return}
 $('#goalCard').style.display='';
 const lvl=data.urgent_level||'relaxed';
@@ -1437,7 +1464,7 @@ return`<div class="gc-row"><span class="gc-name">${esc(ch.chapter)}</span><span 
 }
 
 async function loadTrends(){
-const data=await api('/api/stats/trends?period=daily');
+const data=await api('/api/stats/trends?period=daily&subject='+currentSubject);
 if(!data)return;
 drawTrendChart('#trendCanvas',data.trend,{showAccuracy:true});
 if(data.mastery_trend){
@@ -1507,7 +1534,7 @@ for(let i=0;i<=4;i++){ctx.fillText(Math.round(maxVal*i/4),pad.left-4,pad.top+ch-
 
 // 统计刷新
 async function refreshStats(){
-const d=await api('/api/stats/overview');if(!d)return;
+const d=await api('/api/stats/overview?subject='+currentSubject);if(!d)return;
 $('#stRemain').textContent=d.remaining||0;$('#stMastered').textContent=d.mastered||0;$('#stToday').textContent=d.today_practice||0;
 }
 

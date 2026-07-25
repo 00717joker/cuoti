@@ -57,6 +57,7 @@ class WrongQuestion(Base):
     __tablename__ = 'wrong_questions'
     id = Column(Integer, primary_key=True)
     question_number = Column(String, nullable=False)
+    subject = Column(String, default='math')
     chapter = Column(String, default='')
     section = Column(String, default='')
     source = Column(String, default='')
@@ -72,7 +73,7 @@ class WrongQuestion(Base):
     difficulty = Column(String, default='')
     question_type = Column(String, default='')
     image_data = Column(Text)
-    __table_args__ = (UniqueConstraint('question_number', 'chapter', 'section'),)
+    __table_args__ = (UniqueConstraint('question_number', 'subject', 'chapter', 'section'),)
 
 class DailyPractice(Base):
     __tablename__ = 'daily_practice'
@@ -213,10 +214,13 @@ def manual_restore():
 
 @app.route('/api/questions', methods=['GET'])
 def get_questions():
+    subject = request.args.get('subject', '')
     chapter = request.args.get('chapter', '')
     search = request.args.get('search', '').strip()
     session = get_session()
     query = session.query(WrongQuestion)
+    if subject:
+        query = query.filter(WrongQuestion.subject == subject)
     if chapter:
         query = query.filter(WrongQuestion.chapter == chapter)
     if search:
@@ -225,7 +229,7 @@ def get_questions():
                             WrongQuestion.chapter.like(like) | 
                             WrongQuestion.section.like(like) | 
                             WrongQuestion.source.like(like))
-    rows = query.order_by(WrongQuestion.chapter, WrongQuestion.section, WrongQuestion.question_number).all()
+    rows = query.order_by(WrongQuestion.subject, WrongQuestion.chapter, WrongQuestion.section, WrongQuestion.question_number).all()
     return jsonify([{c.name: getattr(r, c.name) for c in WrongQuestion.__table__.columns} for r in rows])
 
 @app.route('/api/questions', methods=['POST'])
@@ -236,6 +240,7 @@ def add_question():
     added, skipped = [], []
     for item in items:
         qn = str(item.get('question_number', '')).strip()
+        subj = item.get('subject', 'math').strip()
         ch = item.get('chapter', '').strip()
         sec = item.get('section', '').strip()
         src = item.get('source', '').strip()
@@ -250,6 +255,7 @@ def add_question():
             continue
         existing = session.query(WrongQuestion).filter(
             WrongQuestion.question_number == qn,
+            WrongQuestion.subject == subj,
             WrongQuestion.chapter == ch,
             WrongQuestion.section == sec
         ).first()
@@ -268,7 +274,7 @@ def add_question():
             skipped.append({'question_number': qn, 'reason': '已存在，已更新'})
         else:
             q = WrongQuestion(
-                question_number=qn, chapter=ch, section=sec, source=src, note=note,
+                question_number=qn, subject=subj, chapter=ch, section=sec, source=src, note=note,
                 error_type=etype, knowledge_tags=tags, difficulty=difficulty,
                 question_type=qtype, image_data=img,
                 date_added=str(date.today()), last_wrong_date=str(date.today())
@@ -287,6 +293,8 @@ def update_question(qid):
         return jsonify({'error': '题目不存在'}), 404
     if 'question_number' in data:
         q.question_number = data['question_number']
+    if 'subject' in data:
+        q.subject = data['subject']
     if 'chapter' in data:
         q.chapter = data['chapter']
     if 'section' in data:
@@ -333,23 +341,30 @@ def delete_question(qid):
 @app.route('/api/questions/filter', methods=['POST'])
 def filter_questions():
     data = request.get_json()
+    subject = data.get('subject', '')
     chapter = data.get('chapter', '')
     mastered = data.get('mastered', '')
     session = get_session()
     query = session.query(WrongQuestion)
+    if subject:
+        query = query.filter(WrongQuestion.subject == subject)
     if chapter:
         query = query.filter(WrongQuestion.chapter == chapter)
     if mastered == '0':
         query = query.filter(WrongQuestion.mastered == 0)
     elif mastered == '1':
         query = query.filter(WrongQuestion.mastered == 1)
-    rows = query.order_by(WrongQuestion.chapter, WrongQuestion.section, WrongQuestion.question_number).all()
+    rows = query.order_by(WrongQuestion.subject, WrongQuestion.chapter, WrongQuestion.section, WrongQuestion.question_number).all()
     return jsonify([{c.name: getattr(r, c.name) for c in WrongQuestion.__table__.columns} for r in rows])
 
 @app.route('/api/chapters', methods=['GET'])
 def get_chapters():
+    subject = request.args.get('subject', '')
     session = get_session()
-    chapters = session.query(WrongQuestion.chapter).distinct().order_by(WrongQuestion.chapter).all()
+    query = session.query(WrongQuestion.chapter).distinct()
+    if subject:
+        query = query.filter(WrongQuestion.subject == subject)
+    chapters = query.order_by(WrongQuestion.chapter).all()
     return jsonify([c[0] for c in chapters if c[0]])
 
 @app.route('/api/practice', methods=['GET'])
@@ -425,13 +440,17 @@ def get_stats():
 
 @app.route('/api/export/csv', methods=['GET'])
 def export_csv():
+    subject = request.args.get('subject', '')
     session = get_session()
-    questions = session.query(WrongQuestion).order_by(WrongQuestion.chapter, WrongQuestion.section, WrongQuestion.question_number).all()
+    query = session.query(WrongQuestion)
+    if subject:
+        query = query.filter(WrongQuestion.subject == subject)
+    questions = query.order_by(WrongQuestion.subject, WrongQuestion.chapter, WrongQuestion.section, WrongQuestion.question_number).all()
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['题号', '章节', '小节', '来源', '备注', '错误次数', '连续正确', '是否掌握', '添加日期', '最后错误日期', '错误类型', '知识点标签', '难度', '题型'])
+    writer.writerow(['科目', '题号', '章节', '小节', '来源', '备注', '错误次数', '连续正确', '是否掌握', '添加日期', '最后错误日期', '错误类型', '知识点标签', '难度', '题型'])
     for q in questions:
-        writer.writerow([q.question_number, q.chapter, q.section, q.source, q.note, q.wrong_count, q.consecutive_correct, q.mastered, q.date_added, q.last_wrong_date, q.error_type, q.knowledge_tags, q.difficulty, q.question_type])
+        writer.writerow([q.subject, q.question_number, q.chapter, q.section, q.source, q.note, q.wrong_count, q.consecutive_correct, q.mastered, q.date_added, q.last_wrong_date, q.error_type, q.knowledge_tags, q.difficulty, q.question_type])
     output.seek(0)
     return Response(output, mimetype='text/csv', headers={'Content-Disposition': 'attachment; filename=wrong_questions.csv'})
 
@@ -582,22 +601,27 @@ def get_ebbinghaus_practice():
 
 @app.route('/api/daily-practice', methods=['GET'])
 def get_daily_practice():
+    subject = request.args.get('subject', '')
     target_date = request.args.get('date', str(date.today()))
     count = int(get_setting('daily_count', DAILY_COUNT_DEFAULT))
     session = get_session()
-    dp = session.query(DailyPractice).filter_by(date=target_date).first()
+    dp_key = f"{target_date}_{subject}" if subject else target_date
+    dp = session.query(DailyPractice).filter_by(date=dp_key).first()
     if dp:
         q_ids = json.loads(dp.questions)
         questions = session.query(WrongQuestion).filter(WrongQuestion.id.in_(q_ids)).all()
     else:
-        unmastered = session.query(WrongQuestion).filter(WrongQuestion.mastered == 0).all()
+        query = session.query(WrongQuestion).filter(WrongQuestion.mastered == 0)
+        if subject:
+            query = query.filter(WrongQuestion.subject == subject)
+        unmastered = query.all()
         if len(unmastered) <= count:
             questions = unmastered
         else:
             weights = [calculate_ebbinghaus_score(q) for q in unmastered]
             indices = random.choices(range(len(unmastered)), weights=weights, k=count)
             questions = [unmastered[i] for i in sorted(set(indices))]
-        dp = DailyPractice(date=target_date, questions=json.dumps([q.id for q in questions]))
+        dp = DailyPractice(date=dp_key, questions=json.dumps([q.id for q in questions]))
         session.add(dp)
         session.commit()
     today_results = {}
@@ -654,6 +678,7 @@ def submit_practice_result():
 @app.route('/api/targeted-practice', methods=['POST'])
 def get_targeted_practice():
     data = request.get_json()
+    subject = data.get('subject', '')
     chapter = data.get('chapter', '')
     error_type = data.get('error_type', '')
     tag = data.get('tag', '')
@@ -662,6 +687,8 @@ def get_targeted_practice():
     count = data.get('count', 15)
     session = get_session()
     query = session.query(WrongQuestion).filter(WrongQuestion.mastered == 0)
+    if subject:
+        query = query.filter(WrongQuestion.subject == subject)
     if chapter:
         query = query.filter(WrongQuestion.chapter == chapter)
     if error_type:
@@ -688,9 +715,13 @@ def get_targeted_practice():
 # ═══ 学习数据可视化 ═══
 @app.route('/api/stats/overview', methods=['GET'])
 def get_stats_overview():
+    subject = request.args.get('subject', '')
     session = get_session()
-    total = session.query(WrongQuestion).count()
-    mastered = session.query(WrongQuestion).filter(WrongQuestion.mastered == 1).count()
+    query = session.query(WrongQuestion)
+    if subject:
+        query = query.filter(WrongQuestion.subject == subject)
+    total = query.count()
+    mastered = query.filter(WrongQuestion.mastered == 1).count()
     today = str(date.today())
     today_practice = session.query(PracticeResult).filter(PracticeResult.date == today).count()
     return jsonify({
@@ -702,10 +733,14 @@ def get_stats_overview():
 
 @app.route('/api/stats/error-types', methods=['GET'])
 def get_error_type_stats():
+    subject = request.args.get('subject', '')
     session = get_session()
     results = session.query(PracticeResult).all()
     type_counts = Counter()
     for r in results:
+        q = session.query(WrongQuestion).get(r.question_id)
+        if q and subject and q.subject != subject:
+            continue
         etype = r.error_type if r.error_type else 'unknown'
         if r.result == 'wrong':
             type_counts[etype] += 1
@@ -720,21 +755,28 @@ def get_error_type_stats():
 
 @app.route('/api/stats/heatmap', methods=['GET'])
 def get_heatmap_data():
+    subject = request.args.get('subject', '')
     session = get_session()
-    chapters = session.query(WrongQuestion.chapter).distinct().order_by(WrongQuestion.chapter).all()
+    query = session.query(WrongQuestion.chapter).distinct()
+    if subject:
+        query = query.filter(WrongQuestion.subject == subject)
+    chapters = query.order_by(WrongQuestion.chapter).all()
     chapter_list = [c[0] for c in chapters if c[0]]
     result = []
     for ch in chapter_list:
-        total = session.query(WrongQuestion).filter(WrongQuestion.chapter == ch).count()
-        mastered = session.query(WrongQuestion).filter(
-            WrongQuestion.chapter == ch, WrongQuestion.mastered == 1
-        ).count()
+        q_query = session.query(WrongQuestion).filter(WrongQuestion.chapter == ch)
+        if subject:
+            q_query = q_query.filter(WrongQuestion.subject == subject)
+        total = q_query.count()
+        mastered = q_query.filter(WrongQuestion.mastered == 1).count()
         mastery_pct = round(mastered / total * 100) if total > 0 else 0
         error_types = {}
         wrong_results = session.query(PracticeResult).filter(PracticeResult.result == 'wrong').all()
         for r in wrong_results:
             q = session.query(WrongQuestion).get(r.question_id)
             if q and q.chapter == ch:
+                if subject and q.subject != subject:
+                    continue
                 etype = r.error_type if r.error_type else 'unknown'
                 error_types[etype] = error_types.get(etype, 0) + 1
         result.append({
@@ -748,9 +790,13 @@ def get_heatmap_data():
 
 @app.route('/api/stats/diagnosis', methods=['GET'])
 def get_diagnosis():
+    subject = request.args.get('subject', '')
     session = get_session()
-    total = session.query(WrongQuestion).count()
-    mastered = session.query(WrongQuestion).filter(WrongQuestion.mastered == 1).count()
+    query = session.query(WrongQuestion)
+    if subject:
+        query = query.filter(WrongQuestion.subject == subject)
+    total = query.count()
+    mastered = query.filter(WrongQuestion.mastered == 1).count()
     remaining = total - mastered
     recent_results = session.query(PracticeResult).filter(
         PracticeResult.date >= str(date.today() - timedelta(days=7))
@@ -778,9 +824,13 @@ def get_diagnosis():
 
 @app.route('/api/stats/prediction', methods=['GET'])
 def get_prediction():
+    subject = request.args.get('subject', '')
     session = get_session()
-    total = session.query(WrongQuestion).count()
-    mastered = session.query(WrongQuestion).filter(WrongQuestion.mastered == 1).count()
+    query = session.query(WrongQuestion)
+    if subject:
+        query = query.filter(WrongQuestion.subject == subject)
+    total = query.count()
+    mastered = query.filter(WrongQuestion.mastered == 1).count()
     remaining = total - mastered
     if remaining == 0:
         return jsonify({
@@ -840,15 +890,19 @@ def get_prediction():
         except:
             pass
     chapter_predictions = []
-    chapters = session.query(WrongQuestion.chapter).distinct().order_by(WrongQuestion.chapter).all()
+    ch_query = session.query(WrongQuestion.chapter).distinct()
+    if subject:
+        ch_query = ch_query.filter(WrongQuestion.subject == subject)
+    chapters = ch_query.order_by(WrongQuestion.chapter).all()
     for ch in chapters:
         ch_name = ch[0]
         if not ch_name:
             continue
-        ch_total = session.query(WrongQuestion).filter(WrongQuestion.chapter == ch_name).count()
-        ch_mastered = session.query(WrongQuestion).filter(
-            WrongQuestion.chapter == ch_name, WrongQuestion.mastered == 1
-        ).count()
+        q_ch_query = session.query(WrongQuestion).filter(WrongQuestion.chapter == ch_name)
+        if subject:
+            q_ch_query = q_ch_query.filter(WrongQuestion.subject == subject)
+        ch_total = q_ch_query.count()
+        ch_mastered = q_ch_query.filter(WrongQuestion.mastered == 1).count()
         ch_remaining = ch_total - ch_mastered
         if ch_remaining > 0 and daily_avg_mastered > 0:
             ch_days = math.ceil(ch_remaining / daily_avg_mastered)
@@ -874,12 +928,16 @@ def get_prediction():
 
 @app.route('/api/stats/trends', methods=['GET'])
 def get_trends():
+    subject = request.args.get('subject', '')
     period = request.args.get('period', 'daily')
     session = get_session()
     days = 14
     trend_data = []
     mastery_trend = []
     duration_trend = []
+    q_query = session.query(WrongQuestion)
+    if subject:
+        q_query = q_query.filter(WrongQuestion.subject == subject)
     for i in range(days, 0, -1):
         d = str(date.today() - timedelta(days=i))
         results = session.query(PracticeResult).filter(PracticeResult.date == d).all()
@@ -892,8 +950,8 @@ def get_trends():
             'wrong': wrong,
             'accuracy': accuracy
         })
-        total = session.query(WrongQuestion).count()
-        mastered = session.query(WrongQuestion).filter(WrongQuestion.mastered == 1).count()
+        total = q_query.count()
+        mastered = q_query.filter(WrongQuestion.mastered == 1).count()
         pct = round(mastered / total * 100) if total > 0 else 0
         mastery_trend.append({'date': d, 'pct': pct})
         duration_trend.append({'date': d, 'minutes': 0})
@@ -905,9 +963,14 @@ def get_trends():
 
 @app.route('/api/stats/deep-analysis', methods=['GET'])
 def get_deep_analysis():
+    subject = request.args.get('subject', '')
     session = get_session()
-    questions = session.query(WrongQuestion).all()
-    results = session.query(PracticeResult).all()
+    query = session.query(WrongQuestion)
+    if subject:
+        query = query.filter(WrongQuestion.subject == subject)
+    questions = query.all()
+    q_ids = [q.id for q in questions]
+    results = session.query(PracticeResult).filter(PracticeResult.question_id.in_(q_ids)).all()
     
     cross_dimensions = []
     chapter_error_counts = defaultdict(lambda: defaultdict(int))
@@ -918,10 +981,11 @@ def get_deep_analysis():
     
     for ch, etypes in chapter_error_counts.items():
         for etype, count in etypes.items():
-            ch_total = session.query(WrongQuestion).filter(WrongQuestion.chapter == ch).count()
-            ch_mastered = session.query(WrongQuestion).filter(
-                WrongQuestion.chapter == ch, WrongQuestion.mastered == 1
-            ).count()
+            ch_query = session.query(WrongQuestion).filter(WrongQuestion.chapter == ch)
+            if subject:
+                ch_query = ch_query.filter(WrongQuestion.subject == subject)
+            ch_total = ch_query.count()
+            ch_mastered = ch_query.filter(WrongQuestion.mastered == 1).count()
             mastery_pct = round(ch_mastered / ch_total * 100) if ch_total > 0 else 0
             severity = 'ok'
             if mastery_pct < 40:
@@ -1094,6 +1158,7 @@ def get_deep_analysis():
 
 @app.route('/api/stats/clusters', methods=['GET'])
 def get_clusters():
+    subject = request.args.get('subject', '')
     session = get_session()
     results = session.query(PracticeResult).filter(
         PracticeResult.date >= str(date.today() - timedelta(days=7))
@@ -1106,7 +1171,7 @@ def get_clusters():
     for r in results:
         if r.result == 'wrong':
             q = session.query(WrongQuestion).get(r.question_id)
-            if q:
+            if q and (not subject or q.subject == subject):
                 if q.knowledge_tags:
                     for tag in q.knowledge_tags.split(','):
                         tag = tag.strip()
@@ -1140,6 +1205,7 @@ def get_clusters():
 
 @app.route('/api/stats/weekly-report', methods=['GET'])
 def get_weekly_report():
+    subject = request.args.get('subject', '')
     session = get_session()
     today = date.today()
     week_start = today - timedelta(days=today.weekday())
@@ -1149,6 +1215,10 @@ def get_weekly_report():
         PracticeResult.date >= str(week_start),
         PracticeResult.date <= str(week_end)
     ).all()
+    
+    if subject:
+        q_ids = [q.id for q in session.query(WrongQuestion).filter(WrongQuestion.subject == subject).all()]
+        week_results = [r for r in week_results if r.question_id in q_ids]
     
     total_questions = len(week_results)
     if total_questions == 0:
@@ -1163,12 +1233,17 @@ def get_weekly_report():
         PracticeResult.date >= str(prev_week_start),
         PracticeResult.date <= str(prev_week_end)
     ).all()
+    if subject:
+        prev_results = [r for r in prev_results if r.question_id in q_ids]
     prev_accuracy = round(sum(1 for r in prev_results if r.result == 'correct') / len(prev_results) * 100) if prev_results else 0
     
     days_studied = len(set(r.date for r in week_results))
     total_minutes = 0
     
-    mastered_count = session.query(WrongQuestion).filter(WrongQuestion.mastered == 1).count()
+    mastered_query = session.query(WrongQuestion).filter(WrongQuestion.mastered == 1)
+    if subject:
+        mastered_query = mastered_query.filter(WrongQuestion.subject == subject)
+    mastered_count = mastered_query.count()
     
     chapter_counts = Counter()
     tag_counts = Counter()
@@ -1237,6 +1312,7 @@ def get_weekly_report():
 
 @app.route('/api/stats/goal-plan', methods=['GET'])
 def get_goal_plan():
+    subject = request.args.get('subject', '')
     session = get_session()
     exam_date_str = get_setting('exam_date', '')
     if not exam_date_str:
@@ -1251,8 +1327,11 @@ def get_goal_plan():
     if remaining_days < 0:
         remaining_days = 0
     
-    total = session.query(WrongQuestion).count()
-    mastered = session.query(WrongQuestion).filter(WrongQuestion.mastered == 1).count()
+    query = session.query(WrongQuestion)
+    if subject:
+        query = query.filter(WrongQuestion.subject == subject)
+    total = query.count()
+    mastered = query.filter(WrongQuestion.mastered == 1).count()
     remaining_questions = total - mastered
     overall_pct = round(mastered / total * 100) if total > 0 else 0
     
@@ -1429,8 +1508,12 @@ def sync_import():
 
 @app.route('/api/export/pdf', methods=['GET'])
 def export_pdf():
+    subject = request.args.get('subject', '')
     session = get_session()
-    questions = session.query(WrongQuestion).order_by(WrongQuestion.chapter, WrongQuestion.section, WrongQuestion.question_number).all()
+    query = session.query(WrongQuestion)
+    if subject:
+        query = query.filter(WrongQuestion.subject == subject)
+    questions = query.order_by(WrongQuestion.subject, WrongQuestion.chapter, WrongQuestion.section, WrongQuestion.question_number).all()
     
     pdf_content = f"""错题管理系统导出报告
 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
