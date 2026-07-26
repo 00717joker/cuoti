@@ -1213,6 +1213,7 @@ const captureBtn=`<button class="bank-capture-btn ${hasImg?'':'no-img'}" onclick
 return`<div class="bank-card" data-id="${q.id}" onclick="toggleBankSelect(${q.id})"><div class="bank-card-check" id="bankCheck-${q.id}"></div><div class="bank-card-img-wrap">${imgThumb}${captureBtn}</div><div class="bank-card-info"><div class="bank-card-header"><span class="bank-card-qn">${esc(q.question_number)}</span><span class="bank-card-ch">${esc(q.chapter)}</span></div><div class="bank-card-meta">${esc(q.section||'')} · ${esc(q.source||'')} · ${q.wrong_count||1}次错误</div><div class="bank-card-footer">${etype}${tags}<span style="font-size:.7rem;color:${msColor};font-weight:600;margin-left:auto">${ms}</span></div></div></div>`;
 }).join('');
 renderBankPagination(totalPages);
+initLazyLoad();
 }
 function renderBankPagination(totalPages){
 if(totalPages<=1){$('#bankPagination').style.display='none';return}
@@ -1795,8 +1796,10 @@ toast('更新失败','err');
 }
 
 // ═══ 图片懒加载 ═══
+let lazyObserver=null;
 function initLazyLoad(){
-const observer=new IntersectionObserver((entries)=>{
+if(!lazyObserver){
+lazyObserver=new IntersectionObserver((entries)=>{
 entries.forEach(entry=>{
 if(entry.isIntersecting){
 const img=entry.target;
@@ -1806,11 +1809,12 @@ img.src=src;
 img.classList.remove('lazy-img');
 img.classList.add('loaded');
 }
-observer.unobserve(img);
+lazyObserver.unobserve(img);
 }
 });
 },{rootMargin:'100px'});
-$$('img[data-src]').forEach(img=>observer.observe(img));
+}
+$$('img[data-src]:not(.loaded)').forEach(img=>lazyObserver.observe(img));
 }
 
 // ═══ 数据备份 ═══
