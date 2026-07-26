@@ -1168,8 +1168,6 @@ if(!bankQuestions)return;
 renderBankFilters(bankQuestions);
 renderBankList();
 }
-initLazyLoad();
-}
 function renderBankFilters(questions){
 const chapters=[...new Set(questions.map(q=>q.chapter).filter(Boolean).sort())];
 const filterHtml=`<button class="filter-tag ${!bankFilterChapter?'active':''}" onclick="setBankFilter('chapter','')">全部章节</button>`+
@@ -1255,8 +1253,8 @@ const r=await api('/api/questions/batch-delete',{method:'POST',body:JSON.stringi
 if(r&&r.ok){toast('已删除','ok');loadBank();refreshStats()}
 }
 
-function exportCSV(){window.open('/api/export/csv?subject='+currentSubject,'_blank');toast('导出成功','ok')}
-function exportPDF(){window.open('/api/export/pdf?subject='+currentSubject,'_blank');toast('正在生成PDF...','info');setTimeout(()=>toast('PDF导出成功','ok'),1500)}
+function exportCSV(){window.open(API_BASE_URL+'/api/export/csv?subject='+currentSubject,'_blank');toast('导出成功','ok')}
+function exportPDF(){window.open(API_BASE_URL+'/api/export/pdf?subject='+currentSubject,'_blank');toast('正在生成PDF...','info');setTimeout(()=>toast('PDF导出成功','ok'),1500)}
 
 // 统计
 async function loadStats(){
@@ -1622,7 +1620,7 @@ async function syncUpload(){
     const base=getSyncUrl();
     $('#syncStatus').textContent='正在导出数据...';
     try{
-        const resp=await fetch('/api/sync/export');
+        const resp=await fetch(API_BASE_URL+'/api/sync/export');
         const data=await resp.json();
         $('#syncStatus').textContent='正在上传 '+data.wrong_questions.length+' 题...';
         const r=await fetch(base+'/api/sync/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
@@ -1833,7 +1831,7 @@ list.style.display='block';
 }
 
 function downloadBackup(filename){
-window.open('/api/backup/download/'+filename,'_blank');
+window.open(API_BASE_URL+'/api/backup/download/'+filename,'_blank');
 }
 
 async function restoreBackup(filename){
