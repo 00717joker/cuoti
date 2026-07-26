@@ -66,6 +66,7 @@ class WrongQuestion(Base):
     wrong_count = Column(Integer, default=1)
     consecutive_correct = Column(Integer, default=0)
     mastered = Column(Integer, default=0)
+    favorited = Column(Integer, default=0)
     date_added = Column(String, default=str(date.today()))
     last_wrong_date = Column(String, default=str(date.today()))
     last_practice_date = Column(String)
@@ -134,6 +135,26 @@ def init_db():
             session.close()
         except:
             pass
+    
+    # Migration: add favorited column if not exists
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'wrong_questions' AND column_name = 'favorited'"))
+            if result.fetchone()[0] == 0:
+                conn.execute(text("ALTER TABLE wrong_questions ADD COLUMN favorited INTEGER DEFAULT 0"))
+                print('Added favorited column to wrong_questions table')
+    except Exception as e:
+        print(f'Migration check error: {e}')
+        # Try SQLite migration
+        try:
+            with engine.connect() as conn:
+                result = conn.execute(text("PRAGMA table_info(wrong_questions)"))
+                columns = [row[1] for row in result.fetchall()]
+                if 'favorited' not in columns:
+                    conn.execute(text("ALTER TABLE wrong_questions ADD COLUMN favorited INTEGER DEFAULT 0"))
+                    print('Added favorited column to wrong_questions table (SQLite)')
+        except Exception as e2:
+            print(f'SQLite migration error: {e2}')
 
 def restore_from_backup():
     backup_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'initial_data.json')
@@ -353,6 +374,28 @@ def delete_question(qid):
     session.delete(q)
     session.commit()
     return jsonify({'success': True})
+
+@app.route('/api/questions/<int:qid>/favorite', methods=['POST'])
+def toggle_favorite(qid):
+    data = request.get_json()
+    favorited = data.get('favorited', True)
+    session = get_session()
+    q = session.query(WrongQuestion).get(qid)
+    if not q:
+        return jsonify({'error': '题目不存在'}), 404
+    q.favorited = 1 if favorited else 0
+    session.commit()
+    return jsonify({'success': True, 'favorited': q.favorited})
+
+@app.route('/api/questions/favorites', methods=['GET'])
+def get_favorites():
+    subject = request.args.get('subject', '')
+    session = get_session()
+    query = session.query(WrongQuestion).filter(WrongQuestion.favorited == 1)
+    if subject:
+        query = query.filter(WrongQuestion.subject == subject)
+    rows = query.order_by(WrongQuestion.subject, WrongQuestion.chapter, WrongQuestion.question_number).all()
+    return jsonify([{c.name: getattr(r, c.name) for c in WrongQuestion.__table__.columns} for r in rows])
 
 @app.route('/api/questions/filter', methods=['POST'])
 def filter_questions():
@@ -751,6 +794,7 @@ def get_stats_overview():
     total = query.count()
     mastered = query.filter(WrongQuestion.mastered == 1).count()
     remaining = total - mastered
+    favorited = query.filter(WrongQuestion.favorited == 1).count()
     
     today = str(date.today())
     q_ids = [q.id for q in query.all()]
@@ -767,6 +811,7 @@ def get_stats_overview():
         'total': total,
         'mastered': mastered,
         'remaining': remaining,
+        'favorited': favorited,
         'today_practice': today_practice,
         'total_practice': total_practice
     })

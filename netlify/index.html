@@ -29,7 +29,7 @@ header p{opacity:.9;margin-top:4px;font-size:.8rem;position:relative;z-index:1}
 .st:active{transform:scale(.98);box-shadow:var(--sh)}
 .st .n{font-size:1.5rem;font-weight:800;color:var(--txt);line-height:1.2}
 .st .l{font-size:.68rem;color:var(--t2);margin-top:2px}
-.st.m .n{color:var(--succ)}.st.a .n{color:var(--warn)}
+.st.m .n{color:var(--succ)}.st.a .n{color:var(--warn)}.st.f .n{color:#f59e0b}
 .bottom-nav{position:fixed;bottom:0;left:0;right:0;z-index:100;background:rgba(255,255,255,.95);backdrop-filter:blur(20px);border-top:1px solid var(--bd);box-shadow:0 -4px 20px rgba(0,0,0,.04);padding:6px 0 env(safe-area-inset-bottom,6px)}
 .bn-inner{display:flex;max-width:640px;margin:0 auto;padding:0 16px}
 .bn-i{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;border:none;background:0;cursor:pointer;color:var(--t3);font-size:.62rem;transition:var(--transition);border-radius:var(--r-sm)}
@@ -106,6 +106,10 @@ header p{opacity:.9;margin-top:4px;font-size:.8rem;position:relative;z-index:1}
 .pm{margin-left:auto;display:flex;align-items:center;gap:6px;flex-shrink:0}
 .pct{font-size:.7rem;color:var(--danger)}
 .p-info{display:flex;align-items:center;flex-wrap:wrap;gap:6px}
+.practice-fav-btn{border:none;background:transparent;cursor:pointer;font-size:.9rem;color:var(--t3);padding:0;display:flex;align-items:center;justify-content:center;width:22px;height:22px;transition:all .2s}
+.practice-fav-btn:hover{color:#f59e0b;transform:scale(1.2)}
+.practice-fav-btn.active{color:#f59e0b}
+.practice-fav-btn.active:hover{color:#d97706}
 .p-actions{display:flex;gap:6px}
 .progress-ring{display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:conic-gradient(var(--pri) var(--progress),var(--bd-light) 0);position:relative;flex-shrink:0}
 .progress-ring::before{content:var(--progress-text,'');position:absolute;width:28px;height:28px;border-radius:50%;background:var(--card);display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;color:var(--pri)}
@@ -456,6 +460,10 @@ header p{font-size:.75rem;margin-top:2px}
 .bank-card-check{width:20px;height:20px;border:2px solid var(--bd);border-radius:6px;cursor:pointer;flex-shrink:0;transition:var(--transition);display:flex;align-items:center;justify-content:center}
 .bank-card-check.checked{background:var(--pri);border-color:var(--pri)}
 .bank-card-check.checked::after{content:'✓';color:#fff;font-size:.75rem;font-weight:700}
+.bank-fav-btn{width:24px;height:24px;border:none;background:transparent;cursor:pointer;font-size:1rem;color:var(--t3);flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .2s;padding:0}
+.bank-fav-btn:hover{color:#f59e0b;transform:scale(1.2)}
+.bank-fav-btn.active{color:#f59e0b}
+.bank-fav-btn.active:hover{color:#d97706}
 
 /* 分页 */
 .pagination{display:flex;justify-content:center;align-items:center;gap:6px;margin-top:16px}
@@ -477,6 +485,7 @@ header p{font-size:.75rem;margin-top:2px}
 <div class="st"><div class="n" id="stRemain">--</div><div class="l">待攻克</div></div>
 <div class="st m"><div class="n" id="stMastered">--</div><div class="l">已掌握</div></div>
 <div class="st a"><div class="n" id="stToday">--</div><div class="l">今日练习</div></div>
+<div class="st f"><div class="n" id="stFav">--</div><div class="l">⭐ 收藏</div></div>
 </div>
 <div class="subject-tabs" id="subjectTabs">
 <button class="subject-btn active" data-subject="math" onclick="switchSubject('math')">📐 高数</button>
@@ -1038,10 +1047,12 @@ const cls=q.today_result==='correct'?'ok':q.today_result==='wrong'?'ng':q.master
 const etypeLabel=q.error_type?ETYPES[q.error_type]:'';
 const tagChips=(q.knowledge_tags||'').split(',').filter(Boolean).map(t=>`<span class="tag-chip" style="font-size:.6rem;padding:1px 5px">${esc(t)}</span>`).join('');
 const hasImg=!!q.image_data;
+const isFav=!!q.favorited;
+const favBtn=`<button class="practice-fav-btn ${isFav?'active':''}" onclick="event.stopPropagation();toggleFavorite(${q.id},${!isFav});loadPractice()" title="${isFav?'取消收藏':'收藏'}">${isFav?'⭐':'☆'}</button>`;
 const imgHtml=hasImg?`<div style="position:relative;display:inline-block"><img data-src="${q.image_data}" class="practice-img-preview lazy-img" onclick="openImageViewer('${q.image_data}')" title="点击放大查看" style="cursor:pointer"><button class="btn btn-capture btn-xs" onclick="event.stopPropagation();openCaptureModal(${q.id})" style="position:absolute;top:4px;right:4px;opacity:.85" title="重新拍照">📷</button></div>`:`<div class="no-img-hint">暂无图片 <button class="btn btn-capture btn-xs" onclick="openCaptureModal(${q.id})" style="margin-left:6px">补拍</button></div>`;
 const resultIcon=q.today_result==='correct'?'✓':q.today_result==='wrong'?'✗':'';
 const resultColor=q.today_result==='correct'?'var(--succ)':q.today_result==='wrong'?'var(--danger)':'';
-return`<li class="pi ${cls}"><div class="p-info"><span class="pn">#${i+1} ${esc(q.question_number)}</span><span class="pc">${esc(q.chapter)}</span><span class="ps">${esc(q.section||'')} ${esc(q.source||'')}</span>${etypeLabel?`<span class="badge badge-e ${ECLASS[q.error_type]||''}">${etypeLabel}</span>`:''}${tagChips}</div><div>${imgHtml}</div><div class="p-actions">${!q.today_result?`<button class="btn btn-s btn-sm" onclick="markCorrect(${q.id})">✓ 已掌握</button><button class="btn btn-d btn-sm" onclick="openErrorModal(${q.id})">✗ 再做错</button>`:`<span style="font-size:.85rem;font-weight:700;color:${resultColor};display:flex;align-items:center;gap:4px"><span style="width:28px;height:28px;border-radius:50%;background:${resultColor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:.75rem">${resultIcon}</span>${q.today_result==='correct'?'已掌握':'需复习'}</span>`}</div></li>`;
+return`<li class="pi ${cls}"><div class="p-info">${favBtn}<span class="pn">#${i+1} ${esc(q.question_number)}</span><span class="pc">${esc(q.chapter)}</span><span class="ps">${esc(q.section||'')} ${esc(q.source||'')}</span>${etypeLabel?`<span class="badge badge-e ${ECLASS[q.error_type]||''}">${etypeLabel}</span>`:''}${tagChips}</div><div>${imgHtml}</div><div class="p-actions">${!q.today_result?`<button class="btn btn-s btn-sm" onclick="markCorrect(${q.id})">✓ 已掌握</button><button class="btn btn-d btn-sm" onclick="openErrorModal(${q.id})">✗ 再做错</button>`:`<span style="font-size:.85rem;font-weight:700;color:${resultColor};display:flex;align-items:center;gap:4px"><span style="width:28px;height:28px;border-radius:50%;background:${resultColor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:.75rem">${resultIcon}</span>${q.today_result==='correct'?'已掌握':'需复习'}</span>`}</div></li>`;
 }).join('');
 initLazyLoad();
 }
@@ -1168,7 +1179,7 @@ timerSeconds=0;updateTimerDisplay();timerQuestionCount=0;toast(`已记录学习�
 }
 
 // 题库
-let bankQuestions=[],bankPage=1,bankPageSize=10,bankFilterChapter='',bankFilterStatus='';
+let bankQuestions=[],bankPage=1,bankPageSize=10,bankFilterChapter='',bankFilterStatus='',bankFilterFavorite='';
 function debounceSearch(){clearTimeout(st);st=setTimeout(()=>{bankPage=1;loadBank()},300)}
 async function loadBank(){
 const search=$('#searchBox').value.trim();
@@ -1183,12 +1194,14 @@ const filterHtml=`<button class="filter-tag ${!bankFilterChapter?'active':''}" o
 chapters.slice(0,6).map(c=>`<button class="filter-tag ${bankFilterChapter===c?'active':''}" onclick="setBankFilter('chapter','${esc(c)}')">${esc(c)}</button>`).join('')+
 (chapters.length>6?`<button class="filter-tag" onclick="showAllChapters()">更多...</button>`:'')+
 `<button class="filter-tag ${bankFilterStatus==='unmastered'?'active':''}" onclick="setBankFilter('status','unmastered')">未掌握</button>`+
-`<button class="filter-tag ${bankFilterStatus==='mastered'?'active':''}" onclick="setBankFilter('status','mastered')">已掌握</button>`;
+`<button class="filter-tag ${bankFilterStatus==='mastered'?'active':''}" onclick="setBankFilter('status','mastered')">已掌握</button>`+
+`<button class="filter-tag ${bankFilterFavorite==='favorited'?'active':''}" onclick="setBankFilter('favorite','favorited')">⭐ 收藏</button>`;
 $('#bankFilters').innerHTML=filterHtml;
 }
 function setBankFilter(type,value){
 if(type==='chapter')bankFilterChapter=value;
 if(type==='status')bankFilterStatus=value;
+if(type==='favorite')bankFilterFavorite=bankFilterFavorite==='favorited'?'':'favorited';
 bankPage=1;
 loadBank();
 }
@@ -1197,6 +1210,7 @@ let filtered=bankQuestions;
 if(bankFilterChapter)filtered=filtered.filter(q=>q.chapter===bankFilterChapter);
 if(bankFilterStatus==='unmastered')filtered=filtered.filter(q=>!q.mastered);
 if(bankFilterStatus==='mastered')filtered=filtered.filter(q=>q.mastered);
+if(bankFilterFavorite==='favorited')filtered=filtered.filter(q=>q.favorited);
 const totalPages=Math.ceil(filtered.length/bankPageSize);
 const start=(bankPage-1)*bankPageSize;
 const pageData=filtered.slice(start,start+bankPageSize);
@@ -1208,12 +1222,27 @@ const msColor=q.mastered?'var(--succ)':'var(--warn)';
 const etype=q.error_type?`<span class="badge badge-e ${ECLASS[q.error_type]||''}">${ETYPES[q.error_type]||q.error_type}</span>`:'';
 const tags=(q.knowledge_tags||'').split(',').filter(Boolean).slice(0,3).map(t=>`<span class="tag-chip" style="font-size:.6rem;padding:1px 4px">${esc(t)}</span>`).join('');
 const hasImg=!!q.image_data;
+const isFav=!!q.favorited;
 const imgThumb=hasImg?`<img data-src="${q.image_data}" class="bank-card-img lazy-img" onclick="event.stopPropagation();openImageViewer('${q.image_data}')" title="点击查看大图" style="cursor:pointer">`:'<div class="bank-card-img" style="display:flex;align-items:center;justify-content:center;color:var(--t3);font-size:.7rem;width:60px;height:60px">&#128247;</div>';
 const captureBtn=`<button class="bank-capture-btn ${hasImg?'':'no-img'}" onclick="event.stopPropagation();openCaptureModal(${q.id})" title="${hasImg?'重新拍照':'添加图片'}">📷</button>`;
-return`<div class="bank-card" data-id="${q.id}" onclick="toggleBankSelect(${q.id})"><div class="bank-card-check" id="bankCheck-${q.id}"></div><div class="bank-card-img-wrap">${imgThumb}${captureBtn}</div><div class="bank-card-info"><div class="bank-card-header"><span class="bank-card-qn">${esc(q.question_number)}</span><span class="bank-card-ch">${esc(q.chapter)}</span></div><div class="bank-card-meta">${esc(q.section||'')} · ${esc(q.source||'')} · ${q.wrong_count||1}次错误</div><div class="bank-card-footer">${etype}${tags}<span style="font-size:.7rem;color:${msColor};font-weight:600;margin-left:auto">${ms}</span></div></div></div>`;
+const favBtn=`<button class="bank-fav-btn ${isFav?'active':''}" onclick="event.stopPropagation();toggleFavorite(${q.id},${!isFav})" title="${isFav?'取消收藏':'收藏'}">${isFav?'⭐':'☆'}</button>`;
+return`<div class="bank-card" data-id="${q.id}" onclick="toggleBankSelect(${q.id})"><div class="bank-card-check" id="bankCheck-${q.id}"></div>${favBtn}<div class="bank-card-img-wrap">${imgThumb}${captureBtn}</div><div class="bank-card-info"><div class="bank-card-header"><span class="bank-card-qn">${esc(q.question_number)}</span><span class="bank-card-ch">${esc(q.chapter)}</span></div><div class="bank-card-meta">${esc(q.section||'')} · ${esc(q.source||'')} · ${q.wrong_count||1}次错误</div><div class="bank-card-footer">${etype}${tags}<span style="font-size:.7rem;color:${msColor};font-weight:600;margin-left:auto">${ms}</span></div></div></div>`;
 }).join('');
 renderBankPagination(totalPages);
 initLazyLoad();
+}
+async function toggleFavorite(qid,favorited){
+const r=await api('/api/questions/'+qid+'/favorite',{method:'POST',body:JSON.stringify({favorited})});
+if(r&&r.success){
+toast(favorited?'已收藏':'已取消收藏','ok');
+// Update local data
+const q=bankQuestions.find(x=>x.id===qid);
+if(q)q.favorited=favorited?1:0;
+renderBankList();
+refreshStats();
+}else{
+toast('操作失败','err');
+}
 }
 function renderBankPagination(totalPages){
 if(totalPages<=1){$('#bankPagination').style.display='none';return}
@@ -1548,6 +1577,7 @@ for(let i=0;i<=4;i++){ctx.fillText(Math.round(maxVal*i/4),pad.left-4,pad.top+ch-
 async function refreshStats(){
 const d=await api('/api/stats/overview?subject='+currentSubject);if(!d)return;
 $('#stRemain').textContent=d.remaining||0;$('#stMastered').textContent=d.mastered||0;$('#stToday').textContent=d.today_practice||0;
+const stFav=$('#stFav');if(stFav)stFav.textContent=d.favorited||0;
 }
 
 // 设置
