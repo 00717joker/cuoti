@@ -441,7 +441,12 @@ header p{font-size:.75rem;margin-top:2px}
 .bank-card{display:flex;align-items:flex-start;gap:12px;padding:14px;border-radius:var(--r);background:var(--card);box-shadow:var(--sh);margin-bottom:10px;transition:var(--transition);border:1px solid var(--bd-light)}
 .bank-card:hover{box-shadow:var(--sh-md)}
 .bank-card.selected{border-color:var(--pri);background:var(--pri-light)}
-.bank-card-img{width:60px;height:60px;object-fit:cover;border-radius:8px;flex-shrink:0;background:var(--bd-light)}
+.bank-card-img-wrap{position:relative;flex-shrink:0}
+.bank-card-img{width:60px;height:60px;object-fit:cover;border-radius:8px;background:var(--bd-light)}
+.bank-capture-btn{position:absolute;bottom:-4px;right:-4px;width:22px;height:22px;border-radius:50%;background:var(--pri);color:#fff;border:2px solid var(--card);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:.65rem;z-index:2;transition:transform .2s}
+.bank-capture-btn:hover{transform:scale(1.15)}
+.bank-capture-btn.no-img{background:var(--t3);bottom:50%;right:50%;transform:translate(50%,50%)}
+.bank-capture-btn.no-img:hover{transform:translate(50%,50%) scale(1.1)}
 .bank-card-info{flex:1;min-width:0}
 .bank-card-header{display:flex;align-items:center;gap:8px;margin-bottom:4px}
 .bank-card-qn{font-weight:700;color:var(--pri);font-size:.9rem}
@@ -1032,7 +1037,8 @@ $('#practiceList').innerHTML=questions.map((q,i)=>{
 const cls=q.today_result==='correct'?'ok':q.today_result==='wrong'?'ng':q.mastered?'mst':'';
 const etypeLabel=q.error_type?ETYPES[q.error_type]:'';
 const tagChips=(q.knowledge_tags||'').split(',').filter(Boolean).map(t=>`<span class="tag-chip" style="font-size:.6rem;padding:1px 5px">${esc(t)}</span>`).join('');
-const imgHtml=q.image_data?`<img data-src="${q.image_data}" class="practice-img-preview lazy-img" onclick="openImageViewer('${q.image_data}')" title="点击放大查看">`:`<div class="no-img-hint">暂无图片 <button class="btn btn-capture btn-xs" onclick="openCaptureModal(${q.id})" style="margin-left:6px">补拍</button></div>`;
+const hasImg=!!q.image_data;
+const imgHtml=hasImg?`<div style="position:relative;display:inline-block"><img data-src="${q.image_data}" class="practice-img-preview lazy-img" onclick="openImageViewer('${q.image_data}')" title="点击放大查看" style="cursor:pointer"><button class="btn btn-capture btn-xs" onclick="event.stopPropagation();openCaptureModal(${q.id})" style="position:absolute;top:4px;right:4px;opacity:.85" title="重新拍照">📷</button></div>`:`<div class="no-img-hint">暂无图片 <button class="btn btn-capture btn-xs" onclick="openCaptureModal(${q.id})" style="margin-left:6px">补拍</button></div>`;
 const resultIcon=q.today_result==='correct'?'✓':q.today_result==='wrong'?'✗':'';
 const resultColor=q.today_result==='correct'?'var(--succ)':q.today_result==='wrong'?'var(--danger)':'';
 return`<li class="pi ${cls}"><div class="p-info"><span class="pn">#${i+1} ${esc(q.question_number)}</span><span class="pc">${esc(q.chapter)}</span><span class="ps">${esc(q.section||'')} ${esc(q.source||'')}</span>${etypeLabel?`<span class="badge badge-e ${ECLASS[q.error_type]||''}">${etypeLabel}</span>`:''}${tagChips}</div><div>${imgHtml}</div><div class="p-actions">${!q.today_result?`<button class="btn btn-s btn-sm" onclick="markCorrect(${q.id})">✓ 已掌握</button><button class="btn btn-d btn-sm" onclick="openErrorModal(${q.id})">✗ 再做错</button>`:`<span style="font-size:.85rem;font-weight:700;color:${resultColor};display:flex;align-items:center;gap:4px"><span style="width:28px;height:28px;border-radius:50%;background:${resultColor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:.75rem">${resultIcon}</span>${q.today_result==='correct'?'已掌握':'需复习'}</span>`}</div></li>`;
@@ -1201,8 +1207,10 @@ const ms=q.mastered?'已掌握':'未掌握';
 const msColor=q.mastered?'var(--succ)':'var(--warn)';
 const etype=q.error_type?`<span class="badge badge-e ${ECLASS[q.error_type]||''}">${ETYPES[q.error_type]||q.error_type}</span>`:'';
 const tags=(q.knowledge_tags||'').split(',').filter(Boolean).slice(0,3).map(t=>`<span class="tag-chip" style="font-size:.6rem;padding:1px 4px">${esc(t)}</span>`).join('');
-const imgThumb=q.image_data?`<img data-src="${q.image_data}" class="bank-card-img lazy-img" onclick="openImageViewer('${q.image_data}')" title="点击查看大图">`:'<div class="bank-card-img" style="display:flex;align-items:center;justify-content:center;color:var(--t3);font-size:.7rem">&#128247;</div>';
-return`<div class="bank-card" data-id="${q.id}" onclick="toggleBankSelect(${q.id})"><div class="bank-card-check" id="bankCheck-${q.id}"></div>${imgThumb}<div class="bank-card-info"><div class="bank-card-header"><span class="bank-card-qn">${esc(q.question_number)}</span><span class="bank-card-ch">${esc(q.chapter)}</span></div><div class="bank-card-meta">${esc(q.section||'')} · ${esc(q.source||'')} · ${q.wrong_count||1}次错误</div><div class="bank-card-footer">${etype}${tags}<span style="font-size:.7rem;color:${msColor};font-weight:600;margin-left:auto">${ms}</span></div></div></div>`;
+const hasImg=!!q.image_data;
+const imgThumb=hasImg?`<img data-src="${q.image_data}" class="bank-card-img lazy-img" onclick="event.stopPropagation();openImageViewer('${q.image_data}')" title="点击查看大图" style="cursor:pointer">`:'<div class="bank-card-img" style="display:flex;align-items:center;justify-content:center;color:var(--t3);font-size:.7rem;width:60px;height:60px">&#128247;</div>';
+const captureBtn=`<button class="bank-capture-btn ${hasImg?'':'no-img'}" onclick="event.stopPropagation();openCaptureModal(${q.id})" title="${hasImg?'重新拍照':'添加图片'}">📷</button>`;
+return`<div class="bank-card" data-id="${q.id}" onclick="toggleBankSelect(${q.id})"><div class="bank-card-check" id="bankCheck-${q.id}"></div><div class="bank-card-img-wrap">${imgThumb}${captureBtn}</div><div class="bank-card-info"><div class="bank-card-header"><span class="bank-card-qn">${esc(q.question_number)}</span><span class="bank-card-ch">${esc(q.chapter)}</span></div><div class="bank-card-meta">${esc(q.section||'')} · ${esc(q.source||'')} · ${q.wrong_count||1}次错误</div><div class="bank-card-footer">${etype}${tags}<span style="font-size:.7rem;color:${msColor};font-weight:600;margin-left:auto">${ms}</span></div></div></div>`;
 }).join('');
 renderBankPagination(totalPages);
 }
