@@ -1775,11 +1775,12 @@ img.src=base64;
 async function confirmCapture(){
 if(!captureQid||!captureImgData)return;
 const r=await api('/api/questions/'+captureQid+'/image',{method:'PUT',body:JSON.stringify({image_data:captureImgData})});
-if(r&&r.ok){
+if(r&&r.success){
 toast('图片已更新','ok');
 closeCaptureModal();
 loadPractice();
 refreshStats();
+loadBank();
 }else{
 toast('更新失败','err');
 }
