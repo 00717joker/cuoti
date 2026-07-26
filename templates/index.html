@@ -903,9 +903,12 @@ function getCurrentTags(){return [...currentTags]}
 function addTag(tag){if(!currentTags.includes(tag)){currentTags.push(tag);renderTags()}}
 function removeTag(i){currentTags.splice(i,1);renderTags()}
 function renderTags(){
-const wrap=$('#tagInputWrap');const input=$('#tagInput');
+const wrap=$('#tagInputWrap');const input=$('#tagInput');const suggest=$('#tagSuggest');
 const chips=currentTags.map((t,i)=>`<span class="tag-chip">${esc(t)}<span class="tag-x" onclick="removeTag(${i})">×</span></span>`).join('');
-wrap.innerHTML=chips;wrap.appendChild(input);wrap.appendChild($('#tagSuggest'));
+wrap.innerHTML='';
+if(chips){wrap.innerHTML=chips}
+wrap.appendChild(input);
+if(suggest)wrap.appendChild(suggest);
 }
 async function updateTagSuggest(){
 const data=await api('/api/tags');
