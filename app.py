@@ -149,6 +149,7 @@ def restore_from_backup():
         for q in backup_data.get('questions', []):
             session.add(WrongQuestion(
                 id=q.get('id'), question_number=q.get('question_number', ''),
+                subject=q.get('subject', 'math'),
                 chapter=q.get('chapter', ''), section=q.get('section', ''),
                 source=q.get('source', ''), note=q.get('note', ''),
                 wrong_count=q.get('wrong_count', 1), consecutive_correct=q.get('consecutive_correct', 0),
@@ -177,6 +178,24 @@ with app.app_context():
     restored = restore_from_backup()
     if restored > 0:
         print(f'  已从备份恢复 {restored} 道题')
+    # 启动时强制做一次健康检查查询，确保数据库连接预热
+    try:
+        session = Session()
+        q_count = session.query(WrongQuestion).count()
+        print(f'  当前数据库题数: {q_count}')
+        if q_count == 0 and restored == 0:
+            print('  ⚠️ 数据库为空，尝试重新恢复备份...')
+            # 清空任何可能存在的无效设置，然后重新恢复
+            session.query(WrongQuestion).delete()
+            session.commit()
+            session.close()
+            init_db()
+            restored2 = restore_from_backup()
+            print(f'  二次恢复结果: {restored2} 道题')
+        else:
+            session.close()
+    except Exception as e:
+        print(f'  启动预热异常: {e}')
 
 @app.after_request
 def add_cors_headers(response):
