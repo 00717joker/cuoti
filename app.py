@@ -276,6 +276,12 @@ def manual_restore():
     restored = restore_from_backup()
     return jsonify({'success': True, 'restored': restored})
 
+@app.route('/api/admin/fix-subjects', methods=['POST', 'GET'])
+def admin_fix_subjects():
+    """HTTP接口：把所有NULL或空的subject改成math。部署后调用一次即可永久修复。"""
+    fixed = fix_subject_null_to_math()
+    return jsonify({'success': True, 'fixed_null_subjects_to_math': fixed})
+
 def _filter_subject(query, subject):
     """按科目过滤，兼容历史 NULL subject 视为 math"""
     if not subject:
