@@ -173,19 +173,48 @@ def restore_from_backup():
         print(f'Error restoring backup: {e}')
         return 0
 
+def fix_subject_null_to_math():
+    """修复历史数据中 subject 为 NULL 的题目，统一设为 math (高数)"""
+    try:
+        session = Session()
+        null_rows = session.query(WrongQuestion).filter(
+            (WrongQuestion.subject == None) | (WrongQuestion.subject == '')
+        ).count()
+        if null_rows > 0:
+            session.query(WrongQuestion).filter(
+                (WrongQuestion.subject == None) | (WrongQuestion.subject == '')
+            ).update({WrongQuestion.subject: 'math'}, synchronize_session=False)
+            session.commit()
+            print(f'  [修复] subject NULL → math: 共修正 {null_rows} 道题')
+        session.close()
+        return null_rows
+    except Exception as e:
+        print(f'  [修复] subject失败: {e}')
+        try: session.rollback()
+        except: pass
+        try: session.close()
+        except: pass
+        return 0
+
 with app.app_context():
     init_db()
     restored = restore_from_backup()
     if restored > 0:
         print(f'  已从备份恢复 {restored} 道题')
+    # 修复 subject 为 NULL 的历史数据
+    fix_subject_null_to_math()
     # 启动时强制做一次健康检查查询，确保数据库连接预热
     try:
         session = Session()
         q_count = session.query(WrongQuestion).count()
-        print(f'  当前数据库题数: {q_count}')
+        print(f'  当前数据库总题数: {q_count}')
+        subj_dist = {}
+        for q in session.query(WrongQuestion).all():
+            s = q.subject or 'NULL'
+            subj_dist[s] = subj_dist.get(s, 0) + 1
+        print(f'  各科目题数分布: {subj_dist}')
         if q_count == 0 and restored == 0:
             print('  ⚠️ 数据库为空，尝试重新恢复备份...')
-            # 清空任何可能存在的无效设置，然后重新恢复
             session.query(WrongQuestion).delete()
             session.commit()
             session.close()
@@ -247,6 +276,20 @@ def manual_restore():
     restored = restore_from_backup()
     return jsonify({'success': True, 'restored': restored})
 
+def _filter_subject(query, subject):
+    """按科目过滤，兼容历史 NULL subject 视为 math"""
+    if not subject:
+        return query
+    # 用户查询 math 时，返回 NULL subject (历史遗留) 以及 math 的记录
+    if subject == 'math':
+        return query.filter(
+            (WrongQuestion.subject == 'math') |
+            (WrongQuestion.subject == None) |
+            (WrongQuestion.subject == '')
+        )
+    # 其他科目严格匹配
+    return query.filter(WrongQuestion.subject == subject)
+
 @app.route('/api/questions', methods=['GET'])
 def get_questions():
     subject = request.args.get('subject', '')
@@ -254,8 +297,7 @@ def get_questions():
     search = request.args.get('search', '').strip()
     session = get_session()
     query = session.query(WrongQuestion)
-    if subject:
-        query = query.filter(WrongQuestion.subject == subject)
+    query = _filter_subject(query, subject)
     if chapter:
         query = query.filter(WrongQuestion.chapter == chapter)
     if search:
@@ -381,8 +423,7 @@ def filter_questions():
     mastered = data.get('mastered', '')
     session = get_session()
     query = session.query(WrongQuestion)
-    if subject:
-        query = query.filter(WrongQuestion.subject == subject)
+    query = _filter_subject(query, subject)
     if chapter:
         query = query.filter(WrongQuestion.chapter == chapter)
     if mastered == '0':
@@ -397,8 +438,7 @@ def get_chapters():
     subject = request.args.get('subject', '')
     session = get_session()
     query = session.query(WrongQuestion.chapter).distinct()
-    if subject:
-        query = query.filter(WrongQuestion.subject == subject)
+    query = _filter_subject(query, subject)
     chapters = query.order_by(WrongQuestion.chapter).all()
     return jsonify([c[0] for c in chapters if c[0]])
 
@@ -478,8 +518,7 @@ def export_csv():
     subject = request.args.get('subject', '')
     session = get_session()
     query = session.query(WrongQuestion)
-    if subject:
-        query = query.filter(WrongQuestion.subject == subject)
+    query = _filter_subject(query, subject)
     questions = query.order_by(WrongQuestion.subject, WrongQuestion.chapter, WrongQuestion.section, WrongQuestion.question_number).all()
     output = io.StringIO()
     writer = csv.writer(output)
@@ -616,13 +655,11 @@ def get_daily_practice():
     if dp:
         q_ids = json.loads(dp.questions)
         query = session.query(WrongQuestion).filter(WrongQuestion.id.in_(q_ids))
-        if subject:
-            query = query.filter(WrongQuestion.subject == subject)
+        query = _filter_subject(query, subject)
         questions = query.all()
     else:
         query = session.query(WrongQuestion).filter(WrongQuestion.mastered == 0)
-        if subject:
-            query = query.filter(WrongQuestion.subject == subject)
+        query = _filter_subject(query, subject)
         unmastered = query.all()
         
         if len(unmastered) <= count:
@@ -666,6 +703,8 @@ def get_daily_practice():
 @app.route('/api/daily-practice/refresh', methods=['POST'])
 def refresh_daily_practice():
     today = str(date.today())
+    subject = request.get_json(silent=True) or {}
+    subject = subject.get('subject', '') if isinstance(subject, dict) else ''
     count = int(get_setting('daily_count', DAILY_COUNT_DEFAULT))
     session = get_session()
     
@@ -673,7 +712,9 @@ def refresh_daily_practice():
     if dp:
         session.delete(dp)
     
-    unmastered = session.query(WrongQuestion).filter(WrongQuestion.mastered == 0).all()
+    unmastered_q = session.query(WrongQuestion).filter(WrongQuestion.mastered == 0)
+    unmastered_q = _filter_subject(unmastered_q, subject)
+    unmastered = unmastered_q.all()
     if len(unmastered) <= count:
         questions = unmastered
     else:
@@ -720,9 +761,7 @@ def get_targeted_practice():
     
     session = get_session()
     query = session.query(WrongQuestion).filter(WrongQuestion.mastered == 0)
-    
-    if subject:
-        query = query.filter(WrongQuestion.subject == subject)
+    query = _filter_subject(query, subject)
     if chapter:
         query = query.filter(WrongQuestion.chapter == chapter)
     if error_type:
@@ -765,8 +804,7 @@ def get_stats_overview():
     subject = request.args.get('subject', '')
     session = get_session()
     query = session.query(WrongQuestion)
-    if subject:
-        query = query.filter(WrongQuestion.subject == subject)
+    query = _filter_subject(query, subject)
     total = query.count()
     mastered = query.filter(WrongQuestion.mastered == 1).count()
     remaining = total - mastered
@@ -790,6 +828,15 @@ def get_stats_overview():
         'total_practice': total_practice
     })
 
+def _q_matches_subject(q, subject):
+    """判断单个题目对象是否匹配给定科目（兼容NULL→math）"""
+    if not subject:
+        return True
+    q_subj = q.subject or 'math'
+    if not q.subject or q.subject == '':
+        q_subj = 'math'
+    return q_subj == subject
+
 @app.route('/api/stats/error-types', methods=['GET'])
 def get_error_type_stats():
     subject = request.args.get('subject', '')
@@ -798,7 +845,7 @@ def get_error_type_stats():
     type_counts = Counter()
     for r in results:
         q = session.query(WrongQuestion).get(r.question_id)
-        if q and subject and q.subject != subject:
+        if q and not _q_matches_subject(q, subject):
             continue
         etype = r.error_type if r.error_type else 'unknown'
         if r.result == 'wrong':
@@ -817,15 +864,13 @@ def get_heatmap_data():
     subject = request.args.get('subject', '')
     session = get_session()
     query = session.query(WrongQuestion.chapter).distinct()
-    if subject:
-        query = query.filter(WrongQuestion.subject == subject)
+    query = _filter_subject(query, subject)
     chapters = query.order_by(WrongQuestion.chapter).all()
     chapter_list = [c[0] for c in chapters if c[0]]
     result = []
     for ch in chapter_list:
         q_query = session.query(WrongQuestion).filter(WrongQuestion.chapter == ch)
-        if subject:
-            q_query = q_query.filter(WrongQuestion.subject == subject)
+        q_query = _filter_subject(q_query, subject)
         total = q_query.count()
         mastered = q_query.filter(WrongQuestion.mastered == 1).count()
         mastery_pct = round(mastered / total * 100) if total > 0 else 0
@@ -853,8 +898,7 @@ def get_diagnosis():
     subject = request.args.get('subject', '')
     session = get_session()
     query = session.query(WrongQuestion)
-    if subject:
-        query = query.filter(WrongQuestion.subject == subject)
+    query = _filter_subject(query, subject)
     
     total = query.count()
     mastered = query.filter(WrongQuestion.mastered == 1).count()
@@ -900,8 +944,7 @@ def get_prediction():
     subject = request.args.get('subject', '')
     session = get_session()
     query = session.query(WrongQuestion)
-    if subject:
-        query = query.filter(WrongQuestion.subject == subject)
+    query = _filter_subject(query, subject)
     
     total = query.count()
     mastered = query.filter(WrongQuestion.mastered == 1).count()
@@ -987,8 +1030,7 @@ def get_trends():
     duration_trend = []
     
     q_query = session.query(WrongQuestion)
-    if subject:
-        q_query = q_query.filter(WrongQuestion.subject == subject)
+    q_query = _filter_subject(q_query, subject)
     
     for i in range(days, 0, -1):
         d = str(date.today() - timedelta(days=i))
@@ -1038,8 +1080,7 @@ def get_deep_analysis():
     subject = request.args.get('subject', '')
     session = get_session()
     query = session.query(WrongQuestion)
-    if subject:
-        query = query.filter(WrongQuestion.subject == subject)
+    query = _filter_subject(query, subject)
     questions = query.all()
     q_ids = [q.id for q in questions]
     results = session.query(PracticeResult).filter(PracticeResult.question_id.in_(q_ids)).all()
@@ -1054,8 +1095,7 @@ def get_deep_analysis():
     for ch, etypes in chapter_error_counts.items():
         for etype, count in etypes.items():
             ch_query = session.query(WrongQuestion).filter(WrongQuestion.chapter == ch)
-            if subject:
-                ch_query = ch_query.filter(WrongQuestion.subject == subject)
+            ch_query = _filter_subject(ch_query, subject)
             ch_total = ch_query.count()
             ch_mastered = ch_query.filter(WrongQuestion.mastered == 1).count()
             mastery_pct = round(ch_mastered / ch_total * 100) if ch_total > 0 else 0
@@ -1244,7 +1284,7 @@ def get_clusters():
     for r in results:
         if r.result == 'wrong':
             q = session.query(WrongQuestion).get(r.question_id)
-            if q and (not subject or q.subject == subject):
+            if q and _q_matches_subject(q, subject):
                 if q.knowledge_tags:
                     for tag in q.knowledge_tags.split(','):
                         tag = tag.strip()
@@ -1290,7 +1330,9 @@ def get_weekly_report():
     ).all()
     
     if subject:
-        q_ids = [q.id for q in session.query(WrongQuestion).filter(WrongQuestion.subject == subject).all()]
+        subj_q = session.query(WrongQuestion)
+        subj_q = _filter_subject(subj_q, subject)
+        q_ids = [q.id for q in subj_q.all()]
         week_results = [r for r in week_results if r.question_id in q_ids]
     
     total_questions = len(week_results)
@@ -1314,8 +1356,7 @@ def get_weekly_report():
     total_minutes = 0
     
     mastered_query = session.query(WrongQuestion).filter(WrongQuestion.mastered == 1)
-    if subject:
-        mastered_query = mastered_query.filter(WrongQuestion.subject == subject)
+    mastered_query = _filter_subject(mastered_query, subject)
     mastered_count = mastered_query.count()
     
     chapter_counts = Counter()
@@ -1401,8 +1442,7 @@ def get_goal_plan():
         remaining_days = 0
     
     query = session.query(WrongQuestion)
-    if subject:
-        query = query.filter(WrongQuestion.subject == subject)
+    query = _filter_subject(query, subject)
     total = query.count()
     mastered = query.filter(WrongQuestion.mastered == 1).count()
     remaining_questions = total - mastered
@@ -1502,8 +1542,7 @@ def export_pdf():
     subject = request.args.get('subject', '')
     session = get_session()
     query = session.query(WrongQuestion)
-    if subject:
-        query = query.filter(WrongQuestion.subject == subject)
+    query = _filter_subject(query, subject)
     questions = query.order_by(WrongQuestion.subject, WrongQuestion.chapter, WrongQuestion.section, WrongQuestion.question_number).all()
     
     pdf_content = f"""错题管理系统导出报告
