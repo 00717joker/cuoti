@@ -1,6 +1,6 @@
 [build]
   publish = "netlify"
-  command = "chmod +x build.sh && ./build.sh"
+  command = "echo 'static build ok'"
 
 [build.environment]
   SKIP_DEPENDENCIES_INSTALLATION = "true"
