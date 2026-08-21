@@ -6,6 +6,13 @@
   SKIP_DEPENDENCIES_INSTALLATION = "true"
   NODE_VERSION = "18"
 
+# Serve static files (JSON, images) directly
+[[redirects]]
+  from = "/initial_data.json"
+  to = "/initial_data.json"
+  status = 200
+  force = true
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
