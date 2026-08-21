@@ -481,7 +481,7 @@ header p{font-size:.75rem;margin-top:2px}
 <div class="subject-tabs" id="subjectTabs">
 <button class="subject-btn active" data-subject="math" onclick="switchSubject('math')">📐 高数</button>
 <button class="subject-btn" data-subject="linear" onclick="switchSubject('linear')">📊 线代</button>
-<button class="subject-btn" data-subject="probability" onclick="switchSubject('probability')">📈 概率</button>
+<button class="subject-btn" data-subject="prob" onclick="switchSubject('prob')">📈 概率</button>
 </div>
 <div class="tabs" id="desktopTabs">
 <button class="tab active" data-tab="add">+ 添加</button>
@@ -845,7 +845,7 @@ let tt,ocrItems=[],ocrW=null,st=null,pendingMarkQid=null;
 const ETYPES={careless:'粗心失误',concept:'概念不清',calculation:'计算错误',method:'方法不会'};
 const ECLASS={careless:'badge-careless',concept:'badge-concept',calculation:'badge-calculation',method:'badge-method'};
 let currentSubject='math';
-const SUBJECT_LABELS={math:'高数',linear:'线代',probability:'概率'};
+const SUBJECT_LABELS={math:'高数',linear:'线代',prob:'概率'};
 const API_BASE_URL=window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1'?'':'https://cuoti-production.up.railway.app';
 
 function toast(m,c=''){

@@ -34,7 +34,7 @@ DATABASE_URL = os.environ.get('DATABASE_URL')
 if DATABASE_URL:
     DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
     try:
-        engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=300)
+        engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=300, pool_size=5, max_overflow=5)
         from sqlalchemy import text
         test_conn = engine.connect()
         test_conn.execute(text('SELECT 1'))
@@ -49,10 +49,40 @@ if not DATABASE_URL:
     DATA_DIR = os.environ.get('DATA_DIR', os.path.dirname(os.path.abspath(__file__)))
     os.makedirs(DATA_DIR, exist_ok=True)
     DATABASE_PATH = os.path.join(DATA_DIR, 'wrong_questions.db')
-    engine = create_engine(f'sqlite:///{DATABASE_PATH}')
+    engine = create_engine(f'sqlite:///{DATABASE_PATH}', pool_pre_ping=True, pool_recycle=300)
     print(f'Using SQLite database: {DATABASE_PATH}')
 
 Base = declarative_base()
+
+def get_backup_path():
+    """获取备份文件路径"""
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), 'initial_data.json')
+
+def auto_backup_to_file():
+    """自动备份数据库到 initial_data.json 文件（每次写入操作后调用）"""
+    try:
+        session = Session()
+        questions = session.query(WrongQuestion).all()
+        results = session.query(PracticeResult).all()
+        settings = session.query(Setting).all()
+        practices = session.query(DailyPractice).all()
+        backup_data = {
+            'version': 'v3',
+            'backup_time': datetime.now().isoformat(),
+            'questions': [{c.name: getattr(q, c.name) for c in WrongQuestion.__table__.columns} for q in questions],
+            'practice_results': [{c.name: getattr(r, c.name) for c in PracticeResult.__table__.columns} for r in results],
+            'settings': [{c.name: getattr(s, c.name) for c in Setting.__table__.columns} for s in settings],
+            'daily_practice': [{c.name: getattr(p, c.name) for c in DailyPractice.__table__.columns} for p in practices]
+        }
+        with open(get_backup_path(), 'w', encoding='utf-8') as f:
+            json.dump(backup_data, f, ensure_ascii=False, indent=2)
+        session.close()
+        return len(questions)
+    except Exception as e:
+        print(f'  [自动备份] 失败: {e}')
+        try: session.close()
+        except: pass
+        return 0
 
 class WrongQuestion(Base):
     __tablename__ = 'wrong_questions'
@@ -198,12 +228,9 @@ def fix_subject_null_to_math():
 
 with app.app_context():
     init_db()
-    restored = restore_from_backup()
-    if restored > 0:
-        print(f'  已从备份恢复 {restored} 道题')
     # 修复 subject 为 NULL 的历史数据
     fix_subject_null_to_math()
-    # 启动时强制做一次健康检查查询，确保数据库连接预热
+    # 检查数据库是否有数据
     try:
         session = Session()
         q_count = session.query(WrongQuestion).count()
@@ -213,18 +240,25 @@ with app.app_context():
             s = q.subject or 'NULL'
             subj_dist[s] = subj_dist.get(s, 0) + 1
         print(f'  各科目题数分布: {subj_dist}')
-        if q_count == 0 and restored == 0:
-            print('  ⚠️ 数据库为空，尝试重新恢复备份...')
-            session.query(WrongQuestion).delete()
-            session.commit()
-            session.close()
-            init_db()
-            restored2 = restore_from_backup()
-            print(f'  二次恢复结果: {restored2} 道题')
-        else:
-            session.close()
+        session.close()
+        
+        # 如果数据库为空，从备份恢复
+        if q_count == 0:
+            print('  ⚠️ 数据库为空！正在从 initial_data.json 恢复...')
+            restored = restore_from_backup()
+            print(f'  恢复结果: {restored} 道题')
+            if restored == 0:
+                print('  ⚠️ 备份恢复失败！请检查 initial_data.json 是否存在')
+            else:
+                fix_subject_null_to_math()
     except Exception as e:
-        print(f'  启动预热异常: {e}')
+        print(f'  启动检查异常: {e}')
+        # 异常情况下也尝试恢复
+        try:
+            restored = restore_from_backup()
+            print(f'  异常恢复结果: {restored} 道题')
+        except Exception as e2:
+            print(f'  异常恢复也失败: {e2}')
 
 @app.after_request
 def add_cors_headers(response):
@@ -250,9 +284,9 @@ def health():
         session = Session()
         session.execute(text('SELECT 1'))
         session.close()
-        return jsonify({'status': 'healthy', 'database': 'connected', 'version': '3.4.1', 'feature': 'subject-isolation-fixed'})
+        return jsonify({'status': 'healthy', 'database': 'connected', 'version': '3.5.0', 'feature': 'auto-backup + subject-isolation'})
     except Exception as e:
-        return jsonify({'status': 'unhealthy', 'error': str(e), 'version': '3.4.1'}), 503
+        return jsonify({'status': 'unhealthy', 'error': str(e), 'version': '3.5.0'}), 503
 
 def get_setting(key, default=None):
     session = get_session()
@@ -365,6 +399,8 @@ def add_question():
             session.add(q)
             added.append(qn)
     session.commit()
+    if added:
+        auto_backup_to_file()
     return jsonify({'added': len(added), 'skipped': len(skipped)})
 
 @app.route('/api/questions/<int:qid>', methods=['PUT'])
@@ -397,6 +433,7 @@ def update_question(qid):
     if 'image_data' in data:
         q.image_data = data['image_data']
     session.commit()
+    auto_backup_to_file()
     return jsonify({'success': True})
 
 @app.route('/api/questions/<int:qid>/image', methods=['PUT'])
@@ -409,6 +446,7 @@ def update_image(qid):
         return jsonify({'error': '题目不存在'}), 404
     q.image_data = img
     session.commit()
+    auto_backup_to_file()
     return jsonify({'success': True})
 
 @app.route('/api/questions/<int:qid>', methods=['DELETE'])
@@ -419,6 +457,7 @@ def delete_question(qid):
         return jsonify({'error': '题目不存在'}), 404
     session.delete(q)
     session.commit()
+    auto_backup_to_file()
     return jsonify({'success': True})
 
 @app.route('/api/questions/filter', methods=['POST'])
@@ -502,6 +541,7 @@ def practice_result():
         question_id=qid, date=str(date.today()), result=result, error_type=error_type
     ))
     session.commit()
+    auto_backup_to_file()
     return jsonify({'success': True, 'mastered': q.mastered})
 
 @app.route('/api/stats', methods=['GET'])

@@ -2,4 +2,4 @@ flask==3.1.1
 gunicorn==23.0.0
 sqlalchemy==2.0.31
 psycopg2-binary==2.9.9
-# force redeploy v3.4.2 version bump + subject isolation complete
+# force redeploy v3.5.0 auto-backup-on-write + subject isolation + startup restore
