@@ -481,7 +481,7 @@ header p{font-size:.75rem;margin-top:2px}
 <div class="subject-tabs" id="subjectTabs">
 <button class="subject-btn active" data-subject="math" onclick="switchSubject('math')">📐 高数</button>
 <button class="subject-btn" data-subject="linear" onclick="switchSubject('linear')">📊 线代</button>
-<button class="subject-btn" data-subject="prob" onclick="switchSubject('prob')">📈 概率</button>
+<button class="subject-btn" data-subject="probability" onclick="switchSubject('probability')">📈 概率</button>
 </div>
 <div class="tabs" id="desktopTabs">
 <button class="tab active" data-tab="add">+ 添加</button>
@@ -845,8 +845,190 @@ let tt,ocrItems=[],ocrW=null,st=null,pendingMarkQid=null;
 const ETYPES={careless:'粗心失误',concept:'概念不清',calculation:'计算错误',method:'方法不会'};
 const ECLASS={careless:'badge-careless',concept:'badge-concept',calculation:'badge-calculation',method:'badge-method'};
 let currentSubject='math';
-const SUBJECT_LABELS={math:'高数',linear:'线代',prob:'概率'};
-const API_BASE_URL=window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1'?'':'https://cuoti-production.up.railway.app';
+const SUBJECT_LABELS={math:'高数',linear:'线代',probability:'概率'};
+const RAILWAY_URL='https://cuoti-production.up.railway.app';
+let useLocalMode=false;
+let localDB=null;
+
+async function loadLocalDB(){
+  const cached=localStorage.getItem('_offlineDB_v2');
+  if(cached){try{localDB=JSON.parse(cached);return localDB}catch(e){}}
+  try{const r=await fetch('/initial_data.json');localDB=await r.json();localStorage.setItem('_offlineDB_v2',JSON.stringify(localDB))}catch(e){localDB={questions:[],practice_results:[],settings:[{key:'daily_count',value:'15'}]}}
+  return localDB;
+}
+function saveLocalDB(){localStorage.setItem('_offlineDB_v2',JSON.stringify(localDB))}
+
+function filterLocalQuestions(subject){
+  let qs=localDB.questions||[];
+  if(subject==='math'||!subject){
+    return qs.filter(q=>!q.subject||q.subject===''||q.subject==='math');
+  }
+  return qs.filter(q=>q.subject===subject);
+}
+
+function handleLocalAPI(u,o={}){
+  const method=(o.method||'GET').toUpperCase();
+  const url=new URL(u,window.location.origin);
+  const path=url.pathname;
+  const params=url.searchParams;
+
+  if(path==='/api/questions'&&method==='GET'){
+    let qs=filterLocalQuestions(params.get('subject')||'');
+    const ch=params.get('chapter');if(ch)qs=qs.filter(q=>q.chapter===ch);
+    const search=params.get('search');if(search){const l=search.toLowerCase();qs=qs.filter(q=>(q.question_number||'').toLowerCase().includes(l)||(q.chapter||'').toLowerCase().includes(l)||(q.section||'').toLowerCase().includes(l))}
+    qs.sort((a,b)=>(a.chapter||'').localeCompare(b.chapter||'')||(a.section||'').localeCompare(b.section||'')||(a.question_number||'').localeCompare(b.question_number||''));
+    return Promise.resolve(qs);
+  }
+  if(path==='/api/questions'&&method==='POST'){
+    const body=JSON.parse(o.body||'{}');
+    const items=Array.isArray(body)?body:[body];
+    let added=0,skipped=[];
+    for(const item of items){
+      const qn=item.question_number||'',ch=item.chapter||'';
+      if(!qn||!ch){skipped.push({question_number:qn,reason:'题号和章节不能为空'});continue}
+      const subj=item.subject||'math';
+      const existing=localDB.questions.find(q=>q.question_number===qn&&q.subject===subj&&q.chapter===ch&&q.section===(item.section||''));
+      if(existing){existing.wrong_count=(existing.wrong_count||1)+1;existing.consecutive_correct=0;existing.mastered=0;existing.last_wrong_date=todayStr();skipped.push({question_number:qn,reason:'已存在，已更新'})}
+      else{const nid=Math.max(0,...localDB.questions.map(q=>q.id||0))+1;localDB.questions.push({id:nid,question_number:qn,subject:subj,chapter:ch,section:item.section||'',source:item.source||'',note:item.note||'',wrong_count:1,consecutive_correct:0,mastered:0,date_added:todayStr(),last_wrong_date:todayStr(),last_practice_date:null,error_type:item.error_type||'',knowledge_tags:item.knowledge_tags||'',difficulty:item.difficulty||'',question_type:item.question_type||'',image_data:item.image_data||null});added++}
+    }
+    saveLocalDB();
+    return Promise.resolve({added,skipped});
+  }
+  if(path.match(/\/api\/questions\/(\d+)$/)&&method==='PUT'){
+    const qid=parseInt(path.match(/\/api\/questions\/(\d+)$/)[1]);
+    const q=localDB.questions.find(q=>q.id===qid);if(!q)return Promise.resolve({error:'题目不存在'});
+    const body=JSON.parse(o.body||'{}');
+    Object.keys(body).forEach(k=>{if(k!=='id')q[k]=body[k]});
+    saveLocalDB();
+    return Promise.resolve({success:true});
+  }
+  if(path.match(/\/api\/questions\/(\d+)$/)&&method==='DELETE'){
+    const qid=parseInt(path.match(/\/api\/questions\/(\d+)$/)[1]);
+    localDB.questions=localDB.questions.filter(q=>q.id!==qid);
+    saveLocalDB();
+    return Promise.resolve({success:true});
+  }
+  if(path.match(/\/api\/questions\/(\d+)\/image$/)&&method==='PUT'){
+    const qid=parseInt(path.match(/\/api\/questions\/(\d+)\/image$/)[1]);
+    const q=localDB.questions.find(q=>q.id===qid);if(!q)return Promise.resolve({error:'题目不存在'});
+    q.image_data=JSON.parse(o.body||'{}').image_data;
+    saveLocalDB();
+    return Promise.resolve({success:true});
+  }
+  if(path==='/api/daily-practice'&&method==='GET'){
+    const subject=params.get('subject')||'';
+    let qs=filterLocalQuestions(subject).filter(q=>!q.mastered);
+    const count=15;
+    if(qs.length<=count){return Promise.resolve({date:todayStr(),questions:qs})}
+    const weights=qs.map(q=>{let w=(q.wrong_count||1)*2;if(q.last_wrong_date){const d=(new Date()-new Date(q.last_wrong_date))/86400000;w+=Math.max(0,10-d)}else{w+=10}return w});
+    const indices=[];const totalW=weights.reduce((a,b)=>a+b,0);
+    for(let i=0;i<count;i++){let r=Math.random()*totalW;for(let j=0;j<qs.length;j++){r-=weights[j];if(r<=0){indices.push(j);break}}}
+    const picked=[...new Set(indices)].map(i=>qs[i]);
+    return Promise.resolve({date:todayStr(),questions:picked});
+  }
+  if(path==='/api/daily-practice/refresh'&&method==='POST'){
+    return handleLocalAPI('/api/daily-practice?subject='+currentSubject,{});
+  }
+  if(path==='/api/daily-practice/dates'&&method==='GET'){
+    return Promise.resolve([]);
+  }
+  if(path==='/api/practice/result'&&method==='POST'){
+    const body=JSON.parse(o.body||'{}');
+    const q=localDB.questions.find(q=>q.id===body.question_id);
+    if(q){q.last_practice_date=todayStr();if(body.result==='correct'){q.consecutive_correct=(q.consecutive_correct||0)+1;if(q.consecutive_correct>=1)q.mastered=1}else{q.consecutive_correct=0;q.mastered=0;q.wrong_count=(q.wrong_count||1)+1;q.last_wrong_date=todayStr()}
+    localDB.practice_results=localDB.practice_results||[];localDB.practice_results.push({question_id:body.question_id,date:todayStr(),result:body.result,error_type:body.error_type||''});
+    saveLocalDB();}
+    return Promise.resolve({success:true,mastered:q?q.mastered:0});
+  }
+  if(path==='/api/stats/overview'&&method==='GET'){
+    const qs=filterLocalQuestions(params.get('subject')||'');
+    const total=qs.length;const mastered=qs.filter(q=>q.mastered).length;
+    const today=todayStr();
+    const todayPractice=(localDB.practice_results||[]).filter(r=>r.date===today&&qs.some(q=>q.id===r.question_id)).length;
+    const totalPractice=(localDB.practice_results||[]).filter(r=>qs.some(q=>q.id===r.question_id)).length;
+    return Promise.resolve({total,mastered,remaining:total-mastered,today_practice:todayPractice,total_practice:totalPractice});
+  }
+  if(path==='/api/chapters'&&method==='GET'){
+    const qs=filterLocalQuestions(params.get('subject')||'');
+    const chapters=[...new Set(qs.map(q=>q.chapter).filter(Boolean).sort())];
+    return Promise.resolve(chapters);
+  }
+  if(path==='/api/settings'&&method==='POST'){
+    return Promise.resolve({success:true});
+  }
+  if(path==='/api/questions/filter'&&method==='POST'){
+    const body=JSON.parse(o.body||'{}');
+    let qs=filterLocalQuestions(body.subject||'');
+    if(body.chapter)qs=qs.filter(q=>q.chapter===body.chapter);
+    if(body.mastered==='0')qs=qs.filter(q=>!q.mastered);
+    if(body.mastered==='1')qs=qs.filter(q=>q.mastered);
+    return Promise.resolve(qs);
+  }
+  if(path==='/api/targeted-practice'&&method==='POST'){
+    const body=JSON.parse(o.body||'{}');
+    let qs=filterLocalQuestions(body.subject||'').filter(q=>!q.mastered);
+    if(body.chapter)qs=qs.filter(q=>q.chapter===body.chapter);
+    return Promise.resolve({questions:qs.slice(0,body.count||15),total_available:qs.length});
+  }
+  if(path==='/api/stats/error-types'&&method==='GET'){
+    const subject=params.get('subject')||'';
+    const qs=filterLocalQuestions(subject);
+    const qids=new Set(qs.map(q=>q.id));
+    const typeCounts={};
+    (localDB.practice_results||[]).filter(r=>r.result==='wrong'&&qids.has(r.question_id)).forEach(r=>{const t=r.error_type||'unknown';typeCounts[t]=(typeCounts[t]||0)+1});
+    const dist=Object.entries(typeCounts).map(([type,count])=>({type,label:{careless:'粗心失误',concept:'概念不清',calculation:'计算错误',method:'方法不会'}[type]||type,count}));
+    return Promise.resolve({distribution:dist});
+  }
+  if(path==='/api/stats/heatmap'&&method==='GET'){
+    const subject=params.get('subject')||'';
+    const qs=filterLocalQuestions(subject);
+    const chapters=[...new Set(qs.map(q=>q.chapter).filter(Boolean))];
+    const result=chapters.map(ch=>{const cq=qs.filter(q=>q.chapter===ch);const total=cq.length;const mastered=cq.filter(q=>q.mastered).length;return{chapter:ch,total,mastered,mastery_pct:total>0?Math.round(mastered/total*100):0,error_types:{}}});
+    return Promise.resolve({chapters:result});
+  }
+  if(path==='/api/stats/diagnosis'&&method==='GET'){
+    const qs=filterLocalQuestions(params.get('subject')||'');
+    const total=qs.length;const mastered=qs.filter(q=>q.mastered).length;
+    return Promise.resolve({overall:{total,mastered},recent_accuracy:0,time_stats:{total_minutes:0,days_studied:0},suggestions:total===0?['开始添加错题']:[]});
+  }
+  if(path==='/api/stats/trends'&&method==='GET'){
+    return Promise.resolve({trend_data:[],mastery_trend:'stable',mastery_trend_data:[],duration_trend:'stable'});
+  }
+  if(path==='/api/stats/prediction'&&method==='GET'){
+    const qs=filterLocalQuestions(params.get('subject')||'');
+    const total=qs.length;const mastered=qs.filter(q=>q.mastered).length;
+    return Promise.resolve({total,mastered,remaining:total-mastered,daily_avg_mastered:1,predicted_days:total-mastered});
+  }
+  if(path==='/api/stats/deep-analysis'&&method==='GET'){
+    return Promise.resolve({cross_dimensions:[],tag_analysis:[],difficulty_analysis:[]});
+  }
+  if(path==='/api/stats/clusters'&&method==='GET'){
+    return Promise.resolve({alerts:[],message:'数据不足'});
+  }
+  if(path==='/api/stats/weekly-report'&&method==='GET'){
+    return Promise.resolve({stats:{total_questions:0}});
+  }
+  if(path==='/api/stats/goal-plan'&&method==='GET'){
+    const qs=filterLocalQuestions(params.get('subject')||'');
+    const total=qs.length;const mastered=qs.filter(q=>q.mastered).length;
+    return Promise.resolve({total,mastered,remaining:total-mastered,daily_target:5,review_daily:3,overall_pct:total>0?Math.round(mastered/total*100):0});
+  }
+  if(path==='/api/backup'&&method==='POST'){
+    saveLocalDB();return Promise.resolve({success:true,count:localDB.questions.length});
+  }
+  if(path==='/api/restore'&&method==='POST'){
+    return Promise.resolve({success:true,restored:0});
+  }
+  if(path==='/api/admin/fix-subjects'&&(method==='POST'||method==='GET')){
+    let fixed=0;(localDB.questions||[]).forEach(q=>{if(!q.subject||q.subject===''){q.subject='math';fixed++}});
+    if(fixed>0)saveLocalDB();
+    return Promise.resolve({success:true,fixed_null_subjects_to_math:fixed});
+  }
+  if(path==='/health'){
+    return Promise.resolve({status:'healthy',database:'local',version:'3.5.0-local'});
+  }
+  return Promise.resolve(null);
+}
 
 function toast(m,c=''){
 const t=$('#toast');
@@ -870,10 +1052,25 @@ function switchSubject(subject){
   if(activeTab==='stats')loadStats();
 }
 
-// API
+// API - 先试Railway(3秒超时)，失败后用本地数据
 async function api(u,o={}){
-  const url=API_BASE_URL+u;
-  try{const r=await fetch(url,{headers:{'Content-Type':'application/json'},...o});return r.json()}catch(e){toast('网络错误','err');return null}
+  if(!localDB)await loadLocalDB();
+  if(!useLocalMode){
+    try{
+      const ctrl=new AbortController();
+      const tid=setTimeout(()=>ctrl.abort(),3000);
+      const r=await fetch(RAILWAY_URL+u,{headers:{'Content-Type':'application/json'},...o,signal:ctrl.signal});
+      clearTimeout(tid);
+      if(r.ok){return r.json()}
+    }catch(e){
+      console.log('Railway不可用，切换到本地模式');
+      useLocalMode=true;
+    }
+  }
+  // 本地模式
+  const result=await handleLocalAPI(u,o);
+  if(result===null){toast('功能暂不可用','err');return null}
+  return result;
 }
 
 // 路由
@@ -1267,8 +1464,8 @@ const r=await api('/api/questions/batch-delete',{method:'POST',body:JSON.stringi
 if(r&&r.ok){toast('已删除','ok');loadBank();refreshStats()}
 }
 
-function exportCSV(){window.open(API_BASE_URL+'/api/export/csv?subject='+currentSubject,'_blank');toast('导出成功','ok')}
-function exportPDF(){window.open(API_BASE_URL+'/api/export/pdf?subject='+currentSubject,'_blank');toast('正在生成PDF...','info');setTimeout(()=>toast('PDF导出成功','ok'),1500)}
+function exportCSV(){toast(useLocalMode?'本地模式不支持导出':'导出成功',useLocalMode?'info':'ok');if(!useLocalMode)window.open(RAILWAY_URL+'/api/export/csv?subject='+currentSubject,'_blank')}
+function exportPDF(){toast(useLocalMode?'本地模式不支持导出':'正在生成PDF...','info');if(!useLocalMode)window.open(RAILWAY_URL+'/api/export/pdf?subject='+currentSubject,'_blank');if(!useLocalMode)setTimeout(()=>toast('PDF导出成功','ok'),1500)}
 
 // 统计
 async function loadStats(){
@@ -1634,7 +1831,7 @@ async function syncUpload(){
     const base=getSyncUrl();
     $('#syncStatus').textContent='正在导出数据...';
     try{
-        const resp=await fetch(API_BASE_URL+'/api/sync/export');
+        const resp=await fetch(RAILWAY_URL+'/api/sync/export');
         const data=await resp.json();
         $('#syncStatus').textContent='正在上传 '+data.wrong_questions.length+' 题...';
         const r=await fetch(base+'/api/sync/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
@@ -1851,7 +2048,7 @@ list.style.display='block';
 }
 
 function downloadBackup(filename){
-window.open(API_BASE_URL+'/api/backup/download/'+filename,'_blank');
+window.open(RAILWAY_URL+'/api/backup/download/'+filename,'_blank');
 }
 
 async function restoreBackup(filename){
@@ -1885,6 +2082,8 @@ status.style.color='var(--succ)';
 
 // 初始化
 (async function init(){
+await loadLocalDB();
+console.log('本地数据库已加载，题目数:',localDB.questions.length);
 await Promise.all([refreshStats(),loadSettings()]);
 if(Notification.permission==='granted'){const rt=localStorage.getItem('remind_time');if(rt)scheduleReminder(rt)}
 initLazyLoad();
