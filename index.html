@@ -1045,7 +1045,7 @@ function handleLocalAPI(u,o={}){
     return Promise.resolve({overall:{total,mastered},recent_accuracy:0,time_stats:{total_minutes:0,days_studied:0},suggestions:total===0?['开始添加错题']:[]});
   }
   if(path==='/api/stats/trends'&&method==='GET'){
-    return Promise.resolve({trend_data:[],mastery_trend:'stable',mastery_trend_data:[],duration_trend:'stable'});
+    return Promise.resolve({trend_data:[],mastery_trend:[],mastery_trend_data:[],duration_trend:[]});
   }
   if(path==='/api/stats/prediction'&&method==='GET'){
     const qs=filterLocalQuestions(params.get('subject')||'');
@@ -1105,13 +1105,13 @@ function switchSubject(subject){
   if(activeTab==='stats')loadStats();
 }
 
-// API - 先试Railway(3秒超时)，失败后用本地数据
+// API - 先试Railway(2秒超时)，失败后用本地数据
 async function api(u,o={}){
   if(!localDB)await loadLocalDB();
   if(!useLocalMode){
     try{
       const ctrl=new AbortController();
-      const tid=setTimeout(()=>ctrl.abort(),3000);
+      const tid=setTimeout(()=>ctrl.abort(),2000);
       const r=await fetch(RAILWAY_URL+u,{headers:{'Content-Type':'application/json'},...o,signal:ctrl.signal});
       clearTimeout(tid);
       if(r.ok){return r.json()}
