@@ -837,7 +837,11 @@ header p{font-size:.75rem;margin-top:2px}
 <span id="zoomPercent">100%</span>
 <button onclick="event.stopPropagation();zoomImage(1.1)">+</button>
 </div>
-<div class="img-viewer-hint">拖动图片移动 · 双击缩放</div>
+<div style="position:absolute;top:14px;left:14px;display:flex;gap:6px">
+<button onclick="event.stopPropagation();downloadViewerImage()" style="background:rgba(255,255,255,.18);color:#fff;border:none;border-radius:18px;padding:6px 12px;font-size:.75rem;cursor:pointer;backdrop-filter:blur(4px)">⬇️ 下载图片</button>
+<button onclick="event.stopPropagation();resetViewerTransform()" style="background:rgba(255,255,255,.18);color:#fff;border:none;border-radius:18px;padding:6px 12px;font-size:.75rem;cursor:pointer;backdrop-filter:blur(4px)">↺ 复位</button>
+</div>
+<div class="img-viewer-hint">拖动/双指缩放 · 双击快速放大 · 滚轮缩放</div>
 </div>
 
 <!-- 补拍弹窗 -->
@@ -948,26 +952,51 @@ function saveLocalDB(opts={}){
     return false;
   }
 
-  // 2. 写三份冗余副本
+  // 2. 写三份冗余副本（带存储满异常拦截）
   const serialized=JSON.stringify(localDB);
   try{
     localStorage.setItem(DB_CACHE_KEY,serialized);
     localStorage.setItem(DB_BACKUP_KEY1,serialized);
     localStorage.setItem(DB_BACKUP_KEY2,serialized);
   }catch(e){
+    // localStorage 已满！尝试清理快照后重试
     console.error('[写入失败] localStorage 写入异常:',e);
-    saveEmergencySnapshot(localDB);
-    return false;
+    try{
+      const snaps=getSnapshots();
+      if(snaps.length>3){localStorage.setItem(DB_SNAPSHOT_KEY,JSON.stringify(snaps.slice(0,3)));}
+      localStorage.setItem(DB_CACHE_KEY,serialized);
+      localStorage.setItem(DB_BACKUP_KEY1,serialized);
+      localStorage.setItem(DB_BACKUP_KEY2,serialized);
+      toast('⚠️ 存储空间已满，已清理旧快照。建议立即下载备份文件！','warn');
+    }catch(e2){
+      console.error('[二次写入也失败]:',e2);
+      saveEmergencySnapshot(localDB);
+      toast('❌ 存储已满，无法保存！请立即下载备份文件后删除带图片的旧题','err');
+      return false;
+    }
   }
 
-  // 3. 统计：未导出变化数
+  // 3. 统计：未导出变化数 & 存储占用监控
   meta.last_qcount=newQCount;
   meta.last_save=nowStr();
   if(delta>0){
     meta.unexported_changes=(meta.unexported_changes||0)+delta;
     if(!meta.first_unexported_at)meta.first_unexported_at=nowStr();
   }
+  // 计算图片占用
+  try{
+    const withImg=(localDB.questions||[]).filter(q=>q.image_data).length;
+    const imgBytes=(localDB.questions||[]).reduce((s,q)=>s+(q.image_data?q.image_data.length:0),0);
+    meta.questions_with_images=withImg;
+    meta.image_total_kb=Math.round(imgBytes*0.75/1024);
+    meta.total_storage_kb=getStorageUsageKb();
+  }catch(e){}
   setMeta(meta);
+
+  // 存储空间告警（>85% 且有变化时提示）
+  if((meta.total_storage_kb||0)>4250&&delta!==0&&!meta._storage_warned){
+    try{toast('⚠️ 存储占用 >85%，建议尽快导出备份并清理无图旧题','warn');meta._storage_warned=true;setMeta(meta);}catch(e){}
+  }
 
   // 4. 增量快照（题目数变化时自动打快照，保留最近10份）
   if(delta!==0){
@@ -1431,50 +1460,132 @@ function removeOcrRow(i){ocrItems.splice(i,1);renderOcrRes(ocrItems)}
 function resetOcr(){ocrItems=[];$('#ocrPreviewArea').style.display='none';$('#ocrPreviewArea').innerHTML='';$('#ocrFileInput').value='';$('#ocrDropZone').style.display='';$('#ocrProgressBar').style.display='none';$('#ocrStatus').textContent='';$('#ocrResultArea').style.display='none'}
 async function importOcrResults(){const v=ocrItems.filter(it=>it.question_number.trim()&&it.chapter.trim());if(v.length===0){toast('题号和章节不能为空','err');return}const r=await api('/api/questions',{method:'POST',body:JSON.stringify(v.map(it=>({question_number:it.question_number.trim(),chapter:it.chapter.trim(),section:it.section.trim(),source:it.source.trim(),error_type:'',knowledge_tags:'',difficulty:'',question_type:'',note:''})))});if(r)toast('导入 '+r.added+' 题，跳过 '+r.skipped+' 题','ok');resetOcr();refreshStats()}
 
-// ═══ 图片上传 ═══
+// ═══ 图片压缩引擎（多级压缩，目标 ≤ 300KB） ═══
+const IMG_MAX_KB=300;
+const IMG_MAX_W=1200,IMG_MAX_H=1600;
+const IMG_QUALITY_HI=0.88,IMG_QUALITY_MID=0.72,IMG_QUALITY_LO=0.55;
+
+function estimateKb(s){return Math.round(s.length*0.75/1024)}
+
+async function smartCompressImage(base64,inType){
+  return new Promise((resolve)=>{
+    const img=new Image();
+    img.onload=()=>{
+      let w=img.width,h=img.height;
+      // 1. 尺寸等比收缩
+      if(w>IMG_MAX_W){h=Math.round(h*IMG_MAX_W/w);w=IMG_MAX_W}
+      if(h>IMG_MAX_H){w=Math.round(w*IMG_MAX_H/h);h=IMG_MAX_H}
+      const canvas=document.createElement('canvas');
+      canvas.width=w;canvas.height=h;
+      const ctx=canvas.getContext('2d');
+      ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+      ctx.drawImage(img,0,0,w,h);
+      // 2. 多级质量压缩，目标≤300KB
+      const tryQuality=async(quality)=>new Promise(r=>{
+        const out=canvas.toDataURL('image/jpeg',quality);
+        r({out,kb:estimateKb(out)});
+      });
+      (async()=>{
+        const outType='image/jpeg';
+        // 先高中低三档试探
+        const q1=await tryQuality(IMG_QUALITY_HI);
+        if(q1.kb<=IMG_MAX_KB){resolve(q1.out);return}
+        const q2=await tryQuality(IMG_QUALITY_MID);
+        if(q2.kb<=IMG_MAX_KB){resolve(q2.out);return}
+        const q3=await tryQuality(IMG_QUALITY_LO);
+        if(q3.kb<=IMG_MAX_KB){resolve(q3.out);return}
+        // 3. 还太大，逐步缩尺寸直到满足
+        let cw=w,ch=h,lastOut=q3.out;
+        while(cw>400&&ch>400){
+          cw=Math.round(cw*0.75);ch=Math.round(ch*0.75);
+          const c2=document.createElement('canvas');c2.width=cw;c2.height=ch;
+          const cx=c2.getContext('2d');
+          cx.imageSmoothingEnabled=true;cx.imageSmoothingQuality='high';
+          cx.drawImage(canvas,0,0,cw,ch);
+          const c3=await tryQuality.bind(null,IMG_QUALITY_MID)();
+          lastOut=c3.out;
+          if(c3.kb<=IMG_MAX_KB)break;
+        }
+        resolve(lastOut);
+      })();
+    };
+    img.onerror=()=>{resolve(base64)};
+    img.src=base64;
+  });
+}
+
+// ═══ localStorage 存储空间检测 ═══
+function getStorageUsageKb(){
+  let total=0;
+  try{
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i);
+      total += (k.length+(localStorage.getItem(k)||'').length)*0.75/1024;
+    }
+  }catch(e){}
+  return Math.round(total);
+}
+function getStorageQuotaSafe(){
+  try{
+    const t='_quota_test_'+Date.now();
+    const size=3*1024*1024;
+    const s='0'.repeat(size);
+    try{localStorage.setItem(t,s);localStorage.removeItem(t);return 5000}catch(e){return 2500}
+  }catch(e){return 2000}
+}
+function checkStorageBeforeImage(imgData){
+  const imgKb=estimateKb(imgData);
+  const usedKb=getStorageUsageKb();
+  const quotaKb=5000;
+  const ratio=usedKb/quotaKb;
+  const info={imgKb,usedKb,quotaKb,ratio,warn:null};
+  if(imgKb>500){info.warn='图片过大，将无法保存（>500KB）'}
+  else if(ratio>0.92){info.warn='⚠️ 存储空间已用92%+，建议先下载备份文件后再删除旧题图片'}
+  else if(ratio>0.75){info.warn='存储空间使用较快（>75%），建议定期导出备份';}
+  return info;
+}
+
+// ═══ 题目图片上传 ═══
 let currentImgData=null;
 function handleImgUpload(f){
-    if(!f||!f.type.startsWith('image/')){toast('请选择图片','err');return}
-    const reader=new FileReader();
-    reader.onload=e=>{
-        $('#imgPreviewImg').src=e.target.result;
-        $('#imgPreview').style.display='';
-        $('#imgDropZone').style.display='none';
-        compressImage(e.target.result,f.type);
-    };
-    reader.readAsDataURL(f);
+  if(!f){return}
+  if(!f.type||!f.type.startsWith('image/')){toast('请选择图片文件','err');return}
+  if(f.size>8*1024*1024){toast('图片太大（>8MB），请先压缩后再上传','err');return}
+  const origKb=Math.round(f.size/1024);
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    $('#imgPreviewImg').src=e.target.result;
+    $('#imgPreview').style.display='';
+    $('#imgDropZone').style.display='none';
+    $('#imgSizeInfo').textContent='原始：'+origKb+' KB · 正在压缩...';
+    try{
+      const compressed=await smartCompressImage(e.target.result,f.type);
+      currentImgData=compressed;
+      const ck=estimateKb(compressed);
+      const ratio=Math.round((ck/origKb)*100);
+      const info=checkStorageBeforeImage(compressed);
+      let msg='原始 '+origKb+' KB → 压缩后 '+ck+' KB（减少'+(100-ratio)+'%）';
+      if(info.warn){msg+=' · '+info.warn}
+      $('#imgSizeInfo').textContent=msg;
+      $('#imgSizeInfo').style.color=info.warn&&info.warn.includes('无法')?'var(--err)':info.warn?'var(--warn)':'var(--succ)';
+    }catch(err){
+      currentImgData=e.target.result;
+      $('#imgSizeInfo').textContent='压缩失败，使用原图 · '+estimateKb(e.target.result)+' KB';
+      $('#imgSizeInfo').style.color='var(--err)';
+    }
+  };
+  reader.onerror=()=>toast('读取图片失败','err');
+  reader.readAsDataURL(f);
 }
 function clearImgUpload(){
-    currentImgData=null;
-    $('#imgPreview').style.display='none';
-    $('#imgPreviewImg').src='';
-    $('#imgSizeInfo').textContent='';
-    $('#imgDropZone').style.display='';
-    $('#imgFileInput').value='';
+  currentImgData=null;
+  $('#imgPreview').style.display='none';
+  $('#imgPreviewImg').src='';
+  $('#imgSizeInfo').textContent='';
+  $('#imgSizeInfo').style.color='';
+  $('#imgDropZone').style.display='';
+  $('#imgFileInput').value='';
 }
-async function compressImage(base64,type){
-    return new Promise((resolve)=>{
-        const img=new Image();
-        img.onload=()=>{
-            const maxW=1200,maxH=1600;
-            let w=img.width,h=img.height;
-            if(w>maxW){h=h*maxW/w;w=maxW}
-            if(h>maxH){w=w*maxH/h;h=maxH}
-            const canvas=document.createElement('canvas');
-            canvas.width=w;canvas.height=h;
-            const ctx=canvas.getContext('2d');
-            ctx.imageSmoothingEnabled=true;
-            ctx.imageSmoothingQuality='high';
-            ctx.drawImage(img,0,0,w,h);
-            currentImgData=canvas.toDataURL(type,0.9);
-            const kb=(currentImgData.length*0.75/1024).toFixed(1);
-            $('#imgSizeInfo').textContent='压缩后：'+kb+' KB';
-            resolve(currentImgData);
-        };
-        img.src=base64;
-    });
-}
-window.currentImgData=null;
 
 // 练习
 async function loadPractice(){
@@ -2132,6 +2243,17 @@ function closeImageViewer(){
 $('#imageViewer').style.display='none';
 $('#viewerImage').src='';
 }
+function resetViewerTransform(){viewerScale=1;viewerRotation=0;viewerTranslate={x:0,y:0};$('#zoomPercent').textContent='100%';updateViewerTransform();}
+function downloadViewerImage(){
+  const src=$('#viewerImage').src;
+  if(!src)return;
+  const a=document.createElement('a');
+  a.href=src;
+  const d=new Date();
+  a.download=`题目图片_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}_${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}.jpg`;
+  a.click();
+  toast('图片已下载','ok');
+}
 
 function updateViewerTransform(){
 const img=$('#viewerImage');
@@ -2220,39 +2342,36 @@ $('#captureFileInput').value='';
 }
 
 function handleCaptureUpload(f){
-if(!f||!f.type.startsWith('image/')){toast('请选择图片','err');return}
-const reader=new FileReader();
-reader.onload=e=>{
-$('#capturePreviewImg').src=e.target.result;
-$('#capturePreview').style.display='';
-$('#captureDropZone').style.display='none';
-compressCaptureImage(e.target.result,f.type);
-};
-reader.readAsDataURL(f);
-}
-
-async function compressCaptureImage(base64,type){
-return new Promise((resolve)=>{
-const img=new Image();
-img.onload=()=>{
-const maxW=1200,maxH=1600;
-let w=img.width,h=img.height;
-if(w>maxW){h=h*maxW/w;w=maxW}
-if(h>maxH){w=w*maxH/h;h=maxH}
-const canvas=document.createElement('canvas');
-canvas.width=w;canvas.height=h;
-const ctx=canvas.getContext('2d');
-ctx.imageSmoothingEnabled=true;
-ctx.imageSmoothingQuality='high';
-ctx.drawImage(img,0,0,w,h);
-captureImgData=canvas.toDataURL(type,0.9);
-const kb=(captureImgData.length*0.75/1024).toFixed(1);
-$('#captureSizeInfo').textContent='压缩后：'+kb+' KB';
-$('#btnConfirmCapture').disabled=false;
-resolve(captureImgData);
-};
-img.src=base64;
-});
+  if(!f){return}
+  if(!f.type||!f.type.startsWith('image/')){toast('请选择图片文件','err');return}
+  if(f.size>8*1024*1024){toast('图片太大（>8MB），请先压缩后再上传','err');return}
+  const origKb=Math.round(f.size/1024);
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    $('#capturePreviewImg').src=e.target.result;
+    $('#capturePreview').style.display='';
+    $('#captureDropZone').style.display='none';
+    $('#captureSizeInfo').textContent='原始 '+origKb+' KB · 压缩中...';
+    try{
+      const compressed=await smartCompressImage(e.target.result,f.type);
+      captureImgData=compressed;
+      const ck=estimateKb(compressed);
+      const info=checkStorageBeforeImage(compressed);
+      const reduce=origKb>0?Math.max(0,100-Math.round(ck/origKb*100)):0;
+      let msg='原始 '+origKb+' KB → 压缩后 '+ck+' KB（-'+reduce+'%）';
+      if(info.warn){msg+=' · '+info.warn}
+      $('#captureSizeInfo').textContent=msg;
+      $('#captureSizeInfo').style.color=info.warn&&info.warn.includes('无法')?'var(--err)':info.warn?'var(--warn)':'var(--succ)';
+      $('#btnConfirmCapture').disabled=false;
+    }catch(err){
+      captureImgData=e.target.result;
+      $('#captureSizeInfo').textContent='压缩失败，使用原图 · '+estimateKb(e.target.result)+' KB';
+      $('#captureSizeInfo').style.color='var(--err)';
+      $('#btnConfirmCapture').disabled=false;
+    }
+  };
+  reader.onerror=()=>toast('读取图片失败','err');
+  reader.readAsDataURL(f);
 }
 
 async function confirmCapture(){
@@ -2269,27 +2388,53 @@ toast('更新失败','err');
 }
 }
 
-// ═══ 图片懒加载 ═══
+// ═══ 图片懒加载（带失败占位符、防重复观察、Safari兼容） ═══
 let lazyObserver=null;
 function initLazyLoad(){
-if(!lazyObserver){
-lazyObserver=new IntersectionObserver((entries)=>{
-entries.forEach(entry=>{
-if(entry.isIntersecting){
-const img=entry.target;
-const src=img.dataset.src;
-if(src){
-img.src=src;
-img.classList.remove('lazy-img');
-img.classList.add('loaded');
+  const imgs=$$('img[data-src]:not(.loaded):not([data-observed])');
+  if(imgs.length===0)return;
+  if(!('IntersectionObserver' in window)){
+    // 降级：直接加载所有
+    imgs.forEach(img=>{if(img.dataset.src){img.src=img.dataset.src;img.classList.add('loaded')}});
+    return;
+  }
+  if(!lazyObserver){
+    lazyObserver=new IntersectionObserver((entries)=>{
+      entries.forEach(entry=>{
+        if(entry.isIntersecting){
+          const img=entry.target;
+          const src=img.dataset.src;
+          if(src&&!img.classList.contains('loaded')){
+            img.src=src;
+            img.addEventListener('load',()=>{img.classList.remove('lazy-img');img.classList.add('loaded')},{once:true});
+            img.addEventListener('error',()=>{
+              // 失败时替换为占位符
+              img.classList.remove('lazy-img');
+              img.classList.add('loaded');
+              img.removeAttribute('data-src');
+              const ph=document.createElement('div');
+              ph.style.cssText='width:60px;height:60px;border-radius:8px;background:var(--bd-light);color:var(--t3);font-size:.7rem;display:flex;align-items:center;justify-content:center';
+              ph.innerHTML='&#128247;';
+              if(img.parentNode)img.parentNode.replaceChild(ph,img);
+            },{once:true});
+          }
+          lazyObserver.unobserve(img);
+          img.setAttribute('data-observed','1');
+        }
+      });
+    },{rootMargin:'200px',threshold:0.01});
+  }
+  imgs.forEach(img=>lazyObserver.observe(img));
 }
-lazyObserver.unobserve(img);
-}
+
+// ═══ 图片查看器：滚轮缩放支持 ═══
+document.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('imageViewer').addEventListener('wheel',e=>{
+    if($('#imageViewer').style.display!=='flex')return;
+    e.preventDefault();
+    zoomImage(e.deltaY>0?0.9:1.1);
+  },{passive:false});
 });
-},{rootMargin:'100px'});
-}
-$$('img[data-src]:not(.loaded)').forEach(img=>lazyObserver.observe(img));
-}
 
 // ═══ 数据备份 ═══
 async function createBackup(){
