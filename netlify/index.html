@@ -791,6 +791,48 @@ header p{font-size:.75rem;margin-top:2px}
 <div id="snapshotList" style="max-height:340px;overflow-y:auto;border:1px solid var(--bd);border-radius:10px"></div>
 </div>
 <div style="margin-top:12px;border-top:1px solid var(--bd);padding-top:8px">
+<h3 style="font-size:.85rem;font-weight:600;margin:0 0 8px">🖼️ 图片设置</h3>
+<div class="set-row">
+<label>图片质量</label>
+<select id="setImgQuality" style="flex:1;padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--txt);font-size:.8rem">
+<option value="low">标准（600KB · 流量省）</option>
+<option value="mid" selected>高清（1.2MB · 推荐）</option>
+<option value="high">超清（2.5MB · 高保真）</option>
+</select>
+</div>
+<p style="font-size:.65rem;color:var(--t3);margin-top:-4px;margin-bottom:8px">* 拍数学题建议选"高清"以上，公式小字才能看清</p>
+<div class="set-row">
+<label>图片存储位置</label>
+<select id="setImgEngine" onchange="onImgEngineChange(this.value)" style="flex:1;padding:6px 8px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--txt);font-size:.8rem">
+<option value="idb" selected>📦 浏览器 IndexedDB（推荐，容量大）</option>
+<option value="github">☁️ GitHub 仓库图床（跨设备永久）</option>
+<option value="local">💾 localStorage（旧，5MB小容量）</option>
+</select>
+</div>
+<div id="storageStats" style="font-size:.7rem;background:var(--card);border-radius:10px;padding:8px 10px;margin:6px 0;color:var(--t2);line-height:1.6"></div>
+
+<!-- GitHub 图床配置 -->
+<div id="ghCfgBox" style="display:none;border:1px dashed var(--bd);border-radius:10px;padding:10px;margin-top:6px;background:rgba(124,58,237,.04)">
+<p style="font-size:.72rem;font-weight:600;margin:0 0 6px;color:var(--txt)">☁️ GitHub 图床参数</p>
+<p style="font-size:.65rem;color:var(--t3);margin:0 0 8px">
+  在 <a href="https://github.com/settings/tokens/new?scopes=repo,public_repo&description=cuoti-images" target="_blank" style="color:var(--acc);text-decoration:underline">github.com/settings/tokens</a> 生成 Token，权限勾 <b>repo</b>。<br>
+  图片会上传到 <code>gh-pages</code> 分支的 <code>/images/</code> 目录，以 URL 形式引用，跨设备都能看。
+</p>
+<div class="set-row"><label style="font-size:.7rem">用户名</label><input type="text" id="setGhUser" placeholder="如 00717joker" style="flex:1;font-size:.75rem"></div>
+<div class="set-row"><label style="font-size:.7rem">仓库</label><input type="text" id="setGhRepo" placeholder="如 cuoti" style="flex:1;font-size:.75rem"></div>
+<div class="set-row"><label style="font-size:.7rem">Token</label><input type="password" id="setGhToken" placeholder="ghp_xxxx" style="flex:1;font-size:.75rem"></div>
+<div class="set-row"><label style="font-size:.7rem">分支</label><input type="text" id="setGhBranch" value="gh-pages" style="flex:1;font-size:.75rem"></div>
+<div style="display:flex;gap:6px;margin-top:4px">
+<button class="btn btn-s btn-sm" onclick="saveImgSettings()">💾 保存配置</button>
+<button class="btn btn-o btn-sm" onclick="testGithubCfg()">🔌 测试连接</button>
+</div>
+<p id="ghTestResult" style="font-size:.65rem;margin-top:4px"></p>
+</div>
+<button class="btn btn-o btn-sm" style="margin-top:8px;width:100%" onclick="migrateImageStorage()">🔀 迁移图片到当前存储引擎</button>
+<p id="migrateResult" style="font-size:.65rem;color:var(--t2);margin-top:4px"></p>
+</div>
+
+<div style="margin-top:12px;border-top:1px solid var(--bd);padding-top:8px">
 <p style="font-size:.7rem;color:var(--t2);margin-bottom:4px">数据同步（需先启动在线版服务器）</p>
 <div class="set-row"><label>服务器地址</label><input type="text" id="setSyncUrl" placeholder="http://127.0.0.1:5000" style="flex:1"></div>
 <div style="display:flex;gap:6px;margin-top:8px">
@@ -1425,7 +1467,11 @@ const qn=$('#singleQn').value.trim(),ch=$('#singleCh').value.trim();
 if(!qn||!ch){toast('题号和章节不能为空','err');return}
 const tags=getCurrentTags().join(',');
 const item={subject:currentSubject,question_number:qn,chapter:ch,section:$('#singleSec').value.trim(),source:$('#singleSrc').value.trim(),error_type:$('#singleEtype').value,difficulty:$('#singleDifficulty').value,question_type:$('#singleQtype').value,knowledge_tags:tags,note:$('#singleNote').value.trim()};
-if(currentImgData)item.image_data=currentImgData;
+if(currentImgData){
+  const ref=await storeImage(currentImgData);
+  if(!ref){toast('图片保存失败，调整存储位置或压缩图片','err');return}
+  item.image_data=ref;
+}
 const r=await api('/api/questions',{method:'POST',body:JSON.stringify(item)});
 if(r&&r.added!==undefined){toast('添加成功','ok');$('#singleQn').value='';$('#singleSrc').value='';$('#singleNote').value='';currentTags=[];renderTags();clearImgUpload();refreshStats()}else{toast('添加失败','err')}
 }
@@ -1461,50 +1507,53 @@ function resetOcr(){ocrItems=[];$('#ocrPreviewArea').style.display='none';$('#oc
 async function importOcrResults(){const v=ocrItems.filter(it=>it.question_number.trim()&&it.chapter.trim());if(v.length===0){toast('题号和章节不能为空','err');return}const r=await api('/api/questions',{method:'POST',body:JSON.stringify(v.map(it=>({question_number:it.question_number.trim(),chapter:it.chapter.trim(),section:it.section.trim(),source:it.source.trim(),error_type:'',knowledge_tags:'',difficulty:'',question_type:'',note:''})))});if(r)toast('导入 '+r.added+' 题，跳过 '+r.skipped+' 题','ok');resetOcr();refreshStats()}
 
 // ═══ 图片压缩引擎（多级压缩，目标 ≤ 300KB） ═══
-const IMG_MAX_KB=300;
-const IMG_MAX_W=1200,IMG_MAX_H=1600;
-const IMG_QUALITY_HI=0.88,IMG_QUALITY_MID=0.72,IMG_QUALITY_LO=0.55;
-
+// ═══ 图片清晰度档位（按设置） ═══
+const IMG_QUALITY_PROFILE={
+  low:  {maxKb:600, maxW:1400, maxH:1900, q1:0.82, q2:0.70, q3:0.58, label:'标准'},
+  mid:  {maxKb:1200,maxW:1900, maxH:2600, q1:0.92, q2:0.82, q3:0.70, label:'高清'},
+  high: {maxKb:2500,maxW:2600, maxH:3600, q1:0.97, q2:0.90, q3:0.80, label:'超清'}
+};
+function getImgQualityProfile(){
+  const k=localStorage.getItem('img_quality')||'mid';
+  return IMG_QUALITY_PROFILE[k]||IMG_QUALITY_PROFILE.mid;
+}
 function estimateKb(s){return Math.round(s.length*0.75/1024)}
 
+// ═══ 智能压缩（按当前档位保证清晰度） ═══
 async function smartCompressImage(base64,inType){
+  const profile=getImgQualityProfile();
   return new Promise((resolve)=>{
     const img=new Image();
     img.onload=()=>{
       let w=img.width,h=img.height;
-      // 1. 尺寸等比收缩
-      if(w>IMG_MAX_W){h=Math.round(h*IMG_MAX_W/w);w=IMG_MAX_W}
-      if(h>IMG_MAX_H){w=Math.round(w*IMG_MAX_H/h);h=IMG_MAX_H}
+      if(w>profile.maxW){h=Math.round(h*profile.maxW/w);w=profile.maxW}
+      if(h>profile.maxH){w=Math.round(w*profile.maxH/h);h=profile.maxH}
       const canvas=document.createElement('canvas');
       canvas.width=w;canvas.height=h;
       const ctx=canvas.getContext('2d');
       ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
       ctx.drawImage(img,0,0,w,h);
-      // 2. 多级质量压缩，目标≤300KB
       const tryQuality=async(quality)=>new Promise(r=>{
         const out=canvas.toDataURL('image/jpeg',quality);
         r({out,kb:estimateKb(out)});
       });
       (async()=>{
-        const outType='image/jpeg';
-        // 先高中低三档试探
-        const q1=await tryQuality(IMG_QUALITY_HI);
-        if(q1.kb<=IMG_MAX_KB){resolve(q1.out);return}
-        const q2=await tryQuality(IMG_QUALITY_MID);
-        if(q2.kb<=IMG_MAX_KB){resolve(q2.out);return}
-        const q3=await tryQuality(IMG_QUALITY_LO);
-        if(q3.kb<=IMG_MAX_KB){resolve(q3.out);return}
-        // 3. 还太大，逐步缩尺寸直到满足
+        const q1=await tryQuality(profile.q1);
+        if(q1.kb<=profile.maxKb){resolve(q1.out);return}
+        const q2=await tryQuality(profile.q2);
+        if(q2.kb<=profile.maxKb){resolve(q2.out);return}
+        const q3=await tryQuality(profile.q3);
+        if(q3.kb<=profile.maxKb){resolve(q3.out);return}
         let cw=w,ch=h,lastOut=q3.out;
-        while(cw>400&&ch>400){
-          cw=Math.round(cw*0.75);ch=Math.round(ch*0.75);
+        while(cw>700&&ch>700){
+          cw=Math.round(cw*0.82);ch=Math.round(ch*0.82);
           const c2=document.createElement('canvas');c2.width=cw;c2.height=ch;
           const cx=c2.getContext('2d');
           cx.imageSmoothingEnabled=true;cx.imageSmoothingQuality='high';
           cx.drawImage(canvas,0,0,cw,ch);
-          const c3=await tryQuality.bind(null,IMG_QUALITY_MID)();
+          const c3=await tryQuality(profile.q3);
           lastOut=c3.out;
-          if(c3.kb<=IMG_MAX_KB)break;
+          if(c3.kb<=profile.maxKb)break;
         }
         resolve(lastOut);
       })();
@@ -1512,6 +1561,236 @@ async function smartCompressImage(base64,inType){
     img.onerror=()=>{resolve(base64)};
     img.src=base64;
   });
+}
+
+// ═══════════════════════════════════════════════
+// ═══         图片存储引擎抽象层               ═══
+// ═══════════════════════════════════════════════
+// image_ref 格式：
+//  - "idb:<id>"     -> IndexedDB 存储
+//  - "gh:<url>"     -> GitHub Pages URL
+//  - "base64:<data>"-> localStorage 内嵌 base64（兼容旧数据）
+//
+// 对外接口：storeImage(dataUrl) -> ref, getImageUrl(ref) -> url, deleteImage(ref)
+
+const IDB_NAME='cuoti_images_v3';
+const IDB_STORE='images';
+
+function openIDB(){
+  return new Promise((resolve,reject)=>{
+    let req;
+    try{req=indexedDB.open(IDB_NAME,1)}catch(e){reject(e);return}
+    req.onupgradeneeded=e=>{
+      const db=e.target.result;
+      if(!db.objectStoreNames.contains(IDB_STORE))db.createObjectStore(IDB_STORE,{keyPath:'id'});
+    };
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=e=>reject(e.target.error);
+  });
+}
+async function idbPut(id,blob){const db=await openIDB();return new Promise((r,rj)=>{const tx=db.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).put({id,blob,ts:Date.now()});tx.oncomplete=()=>{db.close();r(true)};tx.onerror=e=>{db.close();rj(e.target.error)}})}
+async function idbGet(id){const db=await openIDB();return new Promise((r,rj)=>{const tx=db.transaction(IDB_STORE,'readonly');const req=tx.objectStore(IDB_STORE).get(id);req.onsuccess=()=>{db.close();r(req.result||null)};tx.onerror=e=>{db.close();rj(e.target.error)}})}
+async function idbDelete(id){const db=await openIDB();return new Promise((r,rj)=>{const tx=db.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).delete(id);tx.oncomplete=()=>{db.close();r(true)};tx.onerror=e=>{db.close();rj(e.target.error)}})}
+async function idbCount(){const db=await openIDB();return new Promise((r)=>{const tx=db.transaction(IDB_STORE,'readonly');const req=tx.objectStore(IDB_STORE).count();req.onsuccess=()=>{db.close();r(req.result)};req.onerror=()=>{db.close();r(0)}})}
+
+function dataURLtoBlob(dataurl){
+  const parts=dataurl.split(',');
+  const mime=parts[0].match(/:(.*?);/)[1];
+  const bstr=atob(parts[1]);let n=bstr.length;const u8=new Uint8Array(n);
+  while(n--)u8[n]=bstr.charCodeAt(n);
+  return new Blob([u8],{type:mime});
+}
+function blobToDataURL(blob){return new Promise((r,rj)=>{const fr=new FileReader();fr.onload=e=>r(e.target.result);fr.onerror=rj;fr.readAsDataURL(blob)})}
+
+// 计算字符串简单 hash（作为图片文件名）
+function imgHash(str){let h=2166136261;for(let i=0;i<Math.min(str.length,30000);i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0).toString(36)+Math.floor(Math.random()*1e6).toString(36)}
+
+async function ghGetFileSHA(user,repo,branch,path,token){
+  try{
+    const r=await fetch(`https://api.github.com/repos/${user}/${repo}/contents/${path}?ref=${branch}`,{
+      headers:{'Authorization':`token ${token}`,'Accept':'application/vnd.github+json'}
+    });
+    if(!r.ok)return null;
+    const j=await r.json();return j.sha;
+  }catch(e){return null}
+}
+
+async function ghUploadBlob(user,repo,branch,path,dataurl,token){
+  const parts=dataurl.split(',');
+  const base64=parts[1];
+  const sha=await ghGetFileSHA(user,repo,branch,path,token);
+  const msg=`add image: ${path}`;
+  const body={message:msg,content:base64,branch};
+  if(sha)body.sha=sha;
+  const r=await fetch(`https://api.github.com/repos/${user}/${repo}/contents/${path}`,{
+    method:'PUT',
+    headers:{'Authorization':`token ${token}`,'Accept':'application/vnd.github+json','Content-Type':'application/json'},
+    body:JSON.stringify(body)
+  });
+  if(!r.ok)throw new Error('GitHub API '+r.status+': '+(await r.text()).slice(0,200));
+  // 构造 Pages 直链
+  return `https://${user}.github.io/${repo}/`+path;
+}
+
+function getCurrentImgEngine(){return localStorage.getItem('img_engine')||'idb'}
+function getGhCfg(){
+  try{return JSON.parse(localStorage.getItem('gh_cfg')||'{}')}catch(e){return {}}
+}
+function onImgEngineChange(v){
+  localStorage.setItem('img_engine',v);
+  $('#ghCfgBox').style.display=v==='github'?'block':'none';
+  if(v==='github'){
+    const c=getGhCfg();
+    if(c.user)$('#setGhUser').value=c.user;
+    if(c.repo)$('#setGhRepo').value=c.repo;
+    if(c.token)$('#setGhToken').value=c.token;
+    if(c.branch)$('#setGhBranch').value=c.branch;
+  }
+  refreshStorageStats();
+}
+
+// 统一对外：保存图片本体 → 返回引用字符串
+async function storeImage(dataurl){
+  if(!dataurl)return null;
+  const engine=getCurrentImgEngine();
+  // 计算引用ID（按内容hash）
+  const h=imgHash(dataurl);
+  const kb=estimateKb(dataurl);
+  if(engine==='github'){
+    const c=getGhCfg();
+    if(!c.user||!c.repo||!c.token){toast('GitHub图床未配置，请先设置Token','err');return null}
+    try{
+      const branch=c.branch||'gh-pages';
+      const ext='jpg';
+      const d=new Date();
+      const fname=`img_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}_${h}.${ext}`;
+      const path=`images/${fname}`;
+      const url=await ghUploadBlob(c.user,c.repo,branch,path,dataurl,c.token);
+      console.log('[图床] 上传成功:',url);
+      return 'gh:'+url;
+    }catch(e){
+      toast('GitHub上传失败，已降级到本地IndexedDB：'+e.message,'err');
+      // 降级
+      try{const blob=dataURLtoBlob(dataurl);await idbPut(h,blob);return 'idb:'+h}catch(e2){return 'base64:'+dataurl}
+    }
+  }else if(engine==='local'){
+    if(kb>480){toast('图片 '+kb+'KB 超过 localStorage 限制(480KB)，请切换到IndexedDB存储','err');return null}
+    return 'base64:'+dataurl;
+  }else{
+    // idb (默认)
+    const blob=dataURLtoBlob(dataurl);
+    await idbPut(h,blob);
+    return 'idb:'+h;
+  }
+}
+
+// 统一对外：根据引用字符串获取图片可展示 URL（一次性objectURL或直接URL）
+const _imgUrlCache=new Map();
+async function getImageUrl(ref){
+  if(!ref)return '';
+  if(_imgUrlCache.has(ref))return _imgUrlCache.get(ref);
+  // 兼容：老数据 image_data 直接是 base64（不带前缀）
+  if(ref.startsWith('data:'))return ref;
+  if(ref.startsWith('base64:')){
+    const d=ref.slice(7);
+    _imgUrlCache.set(ref,d);return d;
+  }
+  if(ref.startsWith('gh:')){
+    const d=ref.slice(3);
+    _imgUrlCache.set(ref,d);return d;
+  }
+  if(ref.startsWith('idb:')){
+    const id=ref.slice(4);
+    try{
+      const rec=await idbGet(id);
+      if(!rec)return '';
+      const url=URL.createObjectURL(rec.blob);
+      _imgUrlCache.set(ref,url);
+      return url;
+    }catch(e){
+      console.error('IDB取图失败',e);
+      return '';
+    }
+  }
+  return ref;
+}
+async function deleteImage(ref){
+  if(!ref)return;
+  if(_imgUrlCache.has(ref)){try{URL.revokeObjectURL(_imgUrlCache.get(ref))}catch(e){};_imgUrlCache.delete(ref);}
+  if(ref.startsWith('idb:')){try{await idbDelete(ref.slice(4))}catch(e){}}
+  // GitHub 和 base64 暂不删远端
+}
+
+// ═══ 图片设置面板：UI逻辑 ═══
+function saveImgSettings(){
+  localStorage.setItem('img_quality',$('#setImgQuality').value);
+  localStorage.setItem('img_engine',$('#setImgEngine').value);
+  const u=$('#setGhUser').value.trim(),r=$('#setGhRepo').value.trim(),t=$('#setGhToken').value.trim(),b=$('#setGhBranch').value.trim()||'gh-pages';
+  localStorage.setItem('gh_cfg',JSON.stringify({user:u,repo:r,token:t,branch:b}));
+  toast('图片设置已保存','ok');
+  refreshStorageStats();
+}
+async function testGithubCfg(){
+  const c={user:$('#setGhUser').value.trim(),repo:$('#setGhRepo').value.trim(),token:$('#setGhToken').value.trim(),branch:$('#setGhBranch').value.trim()||'gh-pages'};
+  const el=$('#ghTestResult');
+  el.style.color='var(--t3)';el.textContent='测试中...';
+  if(!c.user||!c.repo||!c.token){el.style.color='var(--err)';el.textContent='请先填写用户名/仓库/Token';return}
+  try{
+    const r=await fetch(`https://api.github.com/repos/${c.user}/${c.repo}/branches/${c.branch}`,{headers:{'Authorization':`token ${c.token}`}});
+    if(!r.ok){el.style.color='var(--err)';el.textContent='❌ 失败: HTTP '+r.status;return}
+    localStorage.setItem('gh_cfg',JSON.stringify(c));
+    el.style.color='var(--succ)';el.textContent='✅ 连接成功！仓库可达，分支 '+c.branch+' 存在';
+  }catch(e){el.style.color='var(--err)';el.textContent='❌ 网络错误: '+e.message}
+}
+
+async function refreshStorageStats(){
+  const el=$('#storageStats');
+  if(!el)return;
+  const qs=(localDB.questions||[]);
+  const withImg=qs.filter(q=>q.image_data).length;
+  const oldInlineBase64=qs.filter(q=>q.image_data&&(q.image_data.startsWith('data:')||q.image_data.startsWith('base64:'))).length;
+  const inIDB=qs.filter(q=>q.image_data&&q.image_data.startsWith('idb:')).length;
+  const inGH=qs.filter(q=>q.image_data&&q.image_data.startsWith('gh:')).length;
+  const lsKb=getStorageUsageKb();
+  let idbCount=0,idbKb=0;
+  try{idbCount=await idbCount()}catch(e){}
+  // 估算 IDB 大小：每道图题平均占800KB
+  idbKb=idbCount*800;
+  const engine=getCurrentImgEngine();
+  const engineLabel={idb:'📦 IndexedDB',github:'☁️ GitHub 仓库',local:'💾 localStorage'}[engine]||engine;
+  const profile=getImgQualityProfile();
+  el.innerHTML=`<b style="color:var(--txt)">📊 存储状态</b><br>
+① 当前引擎：<b>${engineLabel}</b>　图片档位：<b>${profile.label} (≤${profile.maxKb}KB)</b><br>
+② 共 ${withImg}/${qs.length} 道有图 → 内嵌base64:${oldInlineBase64} · IDB:${inIDB} · GitHub:${inGH}<br>
+③ localStorage 占用：<b>${lsKb} KB</b>（总配额 ~5000 KB，${(lsKb/50).toFixed(1)}%）<br>
+④ IndexedDB 记录：${idbCount} 条（约 ${idbKb>1024?(idbKb/1024).toFixed(2)+' MB':idbKb+' KB'}，浏览器配额通常 50MB+）`;
+}
+
+// ═══ 数据迁移：把所有内嵌base64/旧引擎图片迁到当前引擎 ═══
+async function migrateImageStorage(){
+  if(!localDB||!localDB.questions){toast('数据库未就绪','err');return}
+  const qs=localDB.questions;
+  const el=$('#migrateResult');
+  const target=getCurrentImgEngine();
+  if(target==='github'){const c=getGhCfg();if(!c.token||!c.user||!c.repo){toast('请先配置GitHub Token并测试成功再迁移','err');return}}
+  const withImg=qs.filter(q=>q.image_data&&q.image_data.startsWith('data:'));
+  if(withImg.length===0){el.style.color='var(--t3)';el.textContent='没有需要迁移的内嵌图片 ✓';return}
+  if(!confirm(`将迁移 ${withImg.length} 道题的内嵌图片到【${target==='idb'?'IndexedDB':target==='github'?'GitHub仓库':'localStorage(不建议)'}】。\n此操作可能需要几分钟，请勿关闭页面。继续？`))return;
+  let ok=0,fail=0;
+  saveSnapshot(localDB,'before_img_migrate');
+  for(const q of withImg){
+    el.textContent=`迁移中 ${ok+fail+1}/${withImg.length}...（成功${ok} 失败${fail}）`;
+    const oldData=q.image_data;
+    try{
+      const ref=await storeImage(oldData);
+      if(ref){q.image_data=ref;ok++}else{fail++}
+    }catch(e){fail++}
+  }
+  saveLocalDB();
+  el.style.color='var(--succ)';
+  el.innerHTML=`✅ 迁移完成：成功 <b>${ok}</b>，失败 ${fail}<br>现在导出一份备份保存哦！`;
+  toast('迁移完成 '+ok+' 张图片','ok');
+  refreshStorageStats();
 }
 
 // ═══ localStorage 存储空间检测 ═══
@@ -1525,23 +1804,18 @@ function getStorageUsageKb(){
   }catch(e){}
   return Math.round(total);
 }
-function getStorageQuotaSafe(){
-  try{
-    const t='_quota_test_'+Date.now();
-    const size=3*1024*1024;
-    const s='0'.repeat(size);
-    try{localStorage.setItem(t,s);localStorage.removeItem(t);return 5000}catch(e){return 2500}
-  }catch(e){return 2000}
-}
 function checkStorageBeforeImage(imgData){
   const imgKb=estimateKb(imgData);
+  const engine=getCurrentImgEngine();
+  const info={imgKb,usedKb:0,quotaKb:Infinity,ratio:0,warn:null,storage:engine};
+  if(engine==='github'){info.quotaKb=1024*200;if(imgKb>5000)info.warn='单张图 >5MB 建议先压缩再上传';return info;}
+  if(engine==='idb'){info.quotaKb=50*1024;if(imgKb>5000)info.warn='单张图 >5MB 建议先压缩再上传';return info;}
+  // localStorage 模式
   const usedKb=getStorageUsageKb();
   const quotaKb=5000;
-  const ratio=usedKb/quotaKb;
-  const info={imgKb,usedKb,quotaKb,ratio,warn:null};
-  if(imgKb>500){info.warn='图片过大，将无法保存（>500KB）'}
-  else if(ratio>0.92){info.warn='⚠️ 存储空间已用92%+，建议先下载备份文件后再删除旧题图片'}
-  else if(ratio>0.75){info.warn='存储空间使用较快（>75%），建议定期导出备份';}
+  info.usedKb=usedKb;info.quotaKb=quotaKb;info.ratio=usedKb/quotaKb;
+  if(imgKb>480){info.warn='图片过大，localStorage将无法保存（建议切换IndexedDB）';}
+  else if(usedKb+imgKb>quotaKb){info.warn='本地localStorage空间不足（建议切换到IndexedDB或GitHub图床）';}
   return info;
 }
 
@@ -2139,7 +2413,19 @@ const dc=localStorage.getItem('dailyCount')||'15';$('#setDailyCount').value=dc;
 const rt=localStorage.getItem('remind_time');if(rt)$('#setRemindTime').value=rt;
 const ed=localStorage.getItem('exam_date');if(ed)$('#setExamDate').value=ed;
 const su=localStorage.getItem('sync_url');if(su)$('#setSyncUrl').value=su;
+// 图片设置
+const q=localStorage.getItem('img_quality')||'mid';
+const qSel=$('#setImgQuality');if(qSel)qSel.value=q;
+const e=getCurrentImgEngine();
+const eSel=$('#setImgEngine');if(eSel){eSel.value=e;onImgEngineChange(e)}
+// 默认填充 gh 信息（当未填时用 URL 推断）
+const gh=getGhCfg();
+if(gh.user)$('#setGhUser').value=gh.user;else{const m=location.hostname.match(/^([^.]+)\.github\.io$/);if(m)$('#setGhUser').value=m[1]}
+if(gh.repo)$('#setGhRepo').value=gh.repo;else{const m=location.pathname.match(/^\/([^/]+)\//);if(m)$('#setGhRepo').value=m[1]}
+if(gh.token)$('#setGhToken').value=gh.token;
+if(gh.branch)$('#setGhBranch').value=gh.branch;
 updateReminderStatus();updateStreak();
+setTimeout(refreshStorageStats,300);
 }
 async function saveSettings(){
 const dc=parseInt($('#setDailyCount').value);
@@ -2231,12 +2517,16 @@ async function syncUpload(){
 let viewerScale=1,viewerRotation=0,viewerTranslate={x:0,y:0};
 let isDragging=false,dragStart={x:0,y:0},dragLast={x:0,y:0};
 
-function openImageViewer(imgSrc){
+async function openImageViewer(imgSrc){
 $('#imageViewer').style.display='flex';
-$('#viewerImage').src=imgSrc;
 viewerScale=1;viewerRotation=0;viewerTranslate={x:0,y:0};
 updateViewerTransform();
 $('#zoomPercent').textContent='100%';
+const imgEl=$('#viewerImage');
+imgEl.src='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><circle cx="20" cy="20" r="10" stroke="%23fff" fill="none" stroke-width="3" stroke-dasharray="30 20"><animateTransform attributeName="transform" type="rotate" from="0 20 20" to="360 20 20" dur="1s" repeatCount="indefinite"/></circle></svg>';
+const realUrl=await getImageUrl(imgSrc);
+if(realUrl)imgEl.src=realUrl;
+else imgEl.src='data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 80 80"><text x="14" y="50" font-size="60" fill="%23ccc">?</text></svg>';
 }
 
 function closeImageViewer(){
@@ -2376,7 +2666,10 @@ function handleCaptureUpload(f){
 
 async function confirmCapture(){
 if(!captureQid||!captureImgData)return;
-const r=await api('/api/questions/'+captureQid+'/image',{method:'PUT',body:JSON.stringify({image_data:captureImgData})});
+// 保存图片到引擎后再以ref形式提交
+const ref=await storeImage(captureImgData);
+if(!ref){toast('图片保存失败，调整存储位置或压缩图片','err');return}
+const r=await api('/api/questions/'+captureQid+'/image',{method:'PUT',body:JSON.stringify({image_data:ref})});
 if(r&&r.success){
 toast('图片已更新','ok');
 closeCaptureModal();
@@ -2388,43 +2681,83 @@ toast('更新失败','err');
 }
 }
 
-// ═══ 图片懒加载（带失败占位符、防重复观察、Safari兼容） ═══
+// ═══ 异步解析图片引用 + 懒加载 ═══
+// 调用后：所有 data-src="idb:xxx"/"gh:xxx"/... 会被异步解析为可直接访问的 URL，
+// 解析完成后将 data-src 替换为最终 URL，并触发 IntersectionObserver 懒加载
 let lazyObserver=null;
-function initLazyLoad(){
-  const imgs=$$('img[data-src]:not(.loaded):not([data-observed])');
+const _refResolveBus=new Map(); // 正在解析中的 ref -> Promise
+
+function resolveRefAsync(ref){
+  if(_refResolveBus.has(ref))return _refResolveBus.get(ref);
+  const p=getImageUrl(ref);
+  _refResolveBus.set(ref,p);
+  return p;
+}
+
+async function resolveImgRefs(root){
+  const scope=root||document;
+  const imgs=[...scope.querySelectorAll('img[data-src]:not([data-resolved])')];
   if(imgs.length===0)return;
-  if(!('IntersectionObserver' in window)){
-    // 降级：直接加载所有
-    imgs.forEach(img=>{if(img.dataset.src){img.src=img.dataset.src;img.classList.add('loaded')}});
-    return;
+  // 同步路径（data:, gh:, base64:）直接写回 data-src 即可
+  const needAsync=[];
+  for(const img of imgs){
+    const ref=img.dataset.src;
+    if(!ref){img.setAttribute('data-resolved','1');continue}
+    if(ref.startsWith('data:')){img.setAttribute('data-resolved','1');continue}
+    if(ref.startsWith('base64:')){img.dataset.src=ref.slice(7);img.setAttribute('data-resolved','1');continue}
+    if(ref.startsWith('gh:')){img.dataset.src=ref.slice(3);img.setAttribute('data-resolved','1');continue}
+    needAsync.push(img);
   }
-  if(!lazyObserver){
-    lazyObserver=new IntersectionObserver((entries)=>{
-      entries.forEach(entry=>{
-        if(entry.isIntersecting){
-          const img=entry.target;
-          const src=img.dataset.src;
-          if(src&&!img.classList.contains('loaded')){
-            img.src=src;
-            img.addEventListener('load',()=>{img.classList.remove('lazy-img');img.classList.add('loaded')},{once:true});
-            img.addEventListener('error',()=>{
-              // 失败时替换为占位符
-              img.classList.remove('lazy-img');
-              img.classList.add('loaded');
-              img.removeAttribute('data-src');
-              const ph=document.createElement('div');
-              ph.style.cssText='width:60px;height:60px;border-radius:8px;background:var(--bd-light);color:var(--t3);font-size:.7rem;display:flex;align-items:center;justify-content:center';
-              ph.innerHTML='&#128247;';
-              if(img.parentNode)img.parentNode.replaceChild(ph,img);
-            },{once:true});
+  if(needAsync.length>0){
+    // 异步并发解析 idb: 引用
+    const tasks=needAsync.map(async img=>{
+      try{
+        const url=await resolveRefAsync(img.dataset.src);
+        if(url){img.dataset.src=url;img.setAttribute('data-resolved','1')}
+        else{img.setAttribute('data-resolved','1')}
+      }catch(e){img.setAttribute('data-resolved','1')}
+    });
+    await Promise.all(tasks);
+  }
+}
+
+function initLazyLoad(root){
+  const scope=root||document;
+  // 先解析 ref
+  resolveImgRefs(scope).then(()=>{
+    const imgs=[...scope.querySelectorAll('img[data-src]:not(.loaded):not([data-observed])')];
+    if(imgs.length===0)return;
+    if(!('IntersectionObserver' in window)){
+      imgs.forEach(img=>{if(img.dataset.src){img.src=img.dataset.src;img.classList.add('loaded')}});
+      return;
+    }
+    if(!lazyObserver){
+      lazyObserver=new IntersectionObserver((entries)=>{
+        entries.forEach(entry=>{
+          if(entry.isIntersecting){
+            const img=entry.target;
+            const src=img.dataset.src;
+            if(src&&!img.classList.contains('loaded')){
+              img.src=src;
+              img.addEventListener('load',()=>{img.classList.remove('lazy-img');img.classList.add('loaded')},{once:true});
+              img.addEventListener('error',()=>{
+                img.classList.remove('lazy-img');
+                img.classList.add('loaded');
+                img.removeAttribute('data-src');
+                const ph=document.createElement('div');
+                ph.style.cssText='width:60px;height:60px;border-radius:8px;background:var(--bd-light);color:var(--t3);font-size:.7rem;display:flex;align-items:center;justify-content:center';
+                ph.innerHTML='&#128247;';
+                if(img.parentNode)img.parentNode.replaceChild(ph,img);
+              },{once:true});
+            }
+            lazyObserver.unobserve(img);
+            img.setAttribute('data-observed','1');
           }
-          lazyObserver.unobserve(img);
-          img.setAttribute('data-observed','1');
-        }
-      });
-    },{rootMargin:'200px',threshold:0.01});
-  }
-  imgs.forEach(img=>lazyObserver.observe(img));
+        });
+      },{rootMargin:'200px',threshold:0.01});
+    }
+    imgs.forEach(img=>lazyObserver.observe(img));
+  });
 }
 
 // ═══ 图片查看器：滚轮缩放支持 ═══
