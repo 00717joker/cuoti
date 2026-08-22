@@ -471,8 +471,15 @@ header p{font-size:.75rem;margin-top:2px}
 </style>
 </head>
 <body>
-<header><h1>错题管理智能体</h1><p>错因分析 · 热力图 · 每日提醒 · 离线可用</p></header>
+<header><h1>错题管理智能体</h1><p>错因分析 · 热力图 · 每日提醒 · 离线可用</p>
+<div id="backupBanner" style="display:none;margin:8px auto 0;padding:6px 14px;background:rgba(255,255,255,.2);border-radius:20px;font-size:.75rem;color:#fff;max-width:560px;backdrop-filter:blur(4px);line-height:1.5"></div>
+</header>
 <div class="container">
+<div style="display:flex;gap:6px;margin-bottom:10px">
+<button class="btn btn-p btn-sm" style="flex:1;font-size:.7rem;padding:6px 10px" onclick="exportLocalDBAsFile()">⬇️ 下载备份</button>
+<button class="btn btn-s btn-sm" style="flex:1;font-size:.7rem;padding:6px 10px" onclick="document.getElementById('importBackupHidden').click()">⬆️ 恢复备份</button>
+<input type="file" id="importBackupHidden" accept=".json" style="display:none" onchange="importBackupFile(this.files[0]);this.value=''">
+</div>
 <div class="stats-row">
 <div class="st"><div class="n" id="stRemain">--</div><div class="l">待攻克</div></div>
 <div class="st m"><div class="n" id="stMastered">--</div><div class="l">已掌握</div></div>
@@ -774,6 +781,16 @@ header p{font-size:.75rem;margin-top:2px}
 <p style="font-size:.65rem;color:var(--t2);margin-top:4px" id="refreshStatus"></p>
 </div>
 <div style="margin-top:12px;border-top:1px solid var(--bd);padding-top:8px">
+<h3 style="font-size:.85rem;font-weight:600;margin:0 0 8px">⏮️ 时间机器（自动快照）</h3>
+<p style="font-size:.7rem;color:var(--t2);margin-bottom:8px">每次题目数量变化自动打快照，保留最近10份。可一键恢复任意时刻的版本。<br>
+<span id="snapInfo" style="color:var(--t3)"></span></p>
+<div style="display:flex;gap:6px;margin-bottom:8px">
+<button class="btn btn-s btn-sm" onclick="manualTakeSnapshot()">📷 打快照</button>
+<button class="btn btn-o btn-sm" onclick="loadSnapshotList()">🔄 刷新列表</button>
+</div>
+<div id="snapshotList" style="max-height:340px;overflow-y:auto;border:1px solid var(--bd);border-radius:10px"></div>
+</div>
+<div style="margin-top:12px;border-top:1px solid var(--bd);padding-top:8px">
 <p style="font-size:.7rem;color:var(--t2);margin-bottom:4px">数据同步（需先启动在线版服务器）</p>
 <div class="set-row"><label>服务器地址</label><input type="text" id="setSyncUrl" placeholder="http://127.0.0.1:5000" style="flex:1"></div>
 <div style="display:flex;gap:6px;margin-top:8px">
@@ -856,30 +873,155 @@ const RAILWAY_URL='https://cuoti-production.up.railway.app';
 let useLocalMode=false;
 let localDB=null;
 const DB_CACHE_KEY='_offlineDB_v3';
+const DB_BACKUP_KEY1='_offlineDB_v3_b1';
+const DB_BACKUP_KEY2='_offlineDB_v3_b2';
+const DB_SNAPSHOT_KEY='_offlineDB_v3_snaps';
+const DB_META_KEY='_offlineDB_v3_meta';
 const DB_VERSION='v3';
+const MAX_SNAPSHOTS=10;
+const UNEXPORTED_WARN_THRESHOLD=3;
+const STALE_BACKUP_HOURS=24;
 
-// 判断缓存是否有效（必须有 questions 数组且非空，或明确标记无数据）
+// ============= 数据有效性与一致性验证 =============
 function isCacheValid(db){
   if(!db||typeof db!=='object')return false;
   if(!Array.isArray(db.questions))return false;
-  // 空题目缓存无效，必须重新拉取
   if(db.questions.length===0)return false;
   return true;
 }
+function getMeta(){try{return JSON.parse(localStorage.getItem(DB_META_KEY)||'{}')}catch(e){return {}}}
+function setMeta(m){try{localStorage.setItem(DB_META_KEY,JSON.stringify(m))}catch(e){}}
+function nowStr(){return new Date().toISOString()}
 
-async function loadLocalDB(){
-  // 1. 先尝试缓存（必须是有效数据）
-  const cached=localStorage.getItem(DB_CACHE_KEY);
-  if(cached){
-    try{
-      const parsed=JSON.parse(cached);
-      if(isCacheValid(parsed)){localDB=parsed;return localDB}
-      // 缓存无效，清掉重来
-      localStorage.removeItem(DB_CACHE_KEY);
-    }catch(e){localStorage.removeItem(DB_CACHE_KEY)}
+// ============= 三份冗余存储 + 交叉恢复 =============
+function tryParseSafe(str){try{return JSON.parse(str)}catch(e){return null}}
+
+function loadFromAllLocalStorages(){
+  const k1=localStorage.getItem(DB_CACHE_KEY),k2=localStorage.getItem(DB_BACKUP_KEY1),k3=localStorage.getItem(DB_BACKUP_KEY2);
+  const candidates=[[DB_CACHE_KEY,tryParseSafe(k1)],[DB_BACKUP_KEY1,tryParseSafe(k2)],[DB_BACKUP_KEY2,tryParseSafe(k3)]]
+    .filter(([_,v])=>isCacheValid(v))
+    .sort((a,b)=>{
+      const ca=(a[1].questions||[]).length,cb=(b[1].questions||[]).length;
+      if(ca!==cb)return cb-ca;
+      const la=(a[1].practice_results||[]).length,lb=(b[1].practice_results||[]).length;
+      return lb-la;
+    });
+  if(candidates.length>0){
+    const best=candidates[0][1];
+    console.log('[数据安全] 从',candidates.length,'份副本中选择最优（题目数:',best.questions.length,'）');
+    // 同步恢复损坏的副本
+    if(!tryParseSafe(k1))localStorage.setItem(DB_CACHE_KEY,JSON.stringify(best));
+    if(!tryParseSafe(k2))localStorage.setItem(DB_BACKUP_KEY1,JSON.stringify(best));
+    if(!tryParseSafe(k3))localStorage.setItem(DB_BACKUP_KEY2,JSON.stringify(best));
+    return best;
   }
-  // 2. 缓存无效或不存在，强制从 initial_data.json 拉取最新数据
-  // 使用相对路径以兼容子路径部署（如 GitHub Pages 的 /repo/ 子路径）
+  return null;
+}
+
+// ============= 防突变写入：防止数据量突然骤降清空 =============
+function isDangerousDataLoss(newData){
+  const meta=getMeta();
+  const oldQCount=meta.last_qcount||0;
+  const newQCount=(newData.questions||[]).length;
+  if(oldQCount<=5)return false;
+  if(newQCount<oldQCount*0.5){
+    console.warn('[防数据丢失] 检测到突变：旧数据',oldQCount,'题 → 新数据',newQCount,'题（丢失超过50%），已阻止写入');
+    return true;
+  }
+  return false;
+}
+
+// ============= 写入存储：三份副本 + 快照 + 突变保护 =============
+function saveLocalDB(opts={}){
+  if(!localDB)return;
+  const meta=getMeta();
+  const prevQCount=meta.last_qcount||0;
+  const newQCount=(localDB.questions||[]).length;
+  const delta=newQCount-prevQCount;
+
+  // 1. 突变保护：新数据量骤降>50%，阻止写入，先做备份
+  if(isDangerousDataLoss(localDB)&&!opts.force){
+    meta.last_danger={at:nowStr(),old:prevQCount,now:newQCount};
+    setMeta(meta);
+    saveEmergencySnapshot(localDB);
+    console.warn('[防数据丢失] 写入已阻止，您可在"设置→数据修复→恢复应急快照"中找回数据');
+    return false;
+  }
+
+  // 2. 写三份冗余副本
+  const serialized=JSON.stringify(localDB);
+  try{
+    localStorage.setItem(DB_CACHE_KEY,serialized);
+    localStorage.setItem(DB_BACKUP_KEY1,serialized);
+    localStorage.setItem(DB_BACKUP_KEY2,serialized);
+  }catch(e){
+    console.error('[写入失败] localStorage 写入异常:',e);
+    saveEmergencySnapshot(localDB);
+    return false;
+  }
+
+  // 3. 统计：未导出变化数
+  meta.last_qcount=newQCount;
+  meta.last_save=nowStr();
+  if(delta>0){
+    meta.unexported_changes=(meta.unexported_changes||0)+delta;
+    if(!meta.first_unexported_at)meta.first_unexported_at=nowStr();
+  }
+  setMeta(meta);
+
+  // 4. 增量快照（题目数变化时自动打快照，保留最近10份）
+  if(delta!==0){
+    saveSnapshot(localDB,delta>0?'auto_add':'auto_mod');
+  }
+  // 5. 更新备份提醒横幅
+  try{if(typeof updateBackupBanner==='function')updateBackupBanner()}catch(e){}
+  return true;
+}
+
+// 应急快照（防止写入失败/突变阻止时数据丢失）
+function saveEmergencySnapshot(db){
+  try{
+    const snaps=getSnapshots();
+    snaps.unshift({
+      type:'EMERGENCY',
+      at:nowStr(),
+      qcount:(db.questions||[]).length,
+      data:db
+    });
+    localStorage.setItem(DB_SNAPSHOT_KEY,JSON.stringify(snaps.slice(0,MAX_SNAPSHOTS+3)));
+  }catch(e){}
+}
+function getSnapshots(){try{return JSON.parse(localStorage.getItem(DB_SNAPSHOT_KEY)||'[]')}catch(e){return[]}}
+function saveSnapshot(db,type){
+  try{
+    const snaps=getSnapshots();
+    snaps.unshift({
+      type,at:nowStr(),
+      qcount:(db.questions||[]).length,
+      data:db
+    });
+    localStorage.setItem(DB_SNAPSHOT_KEY,JSON.stringify(snaps.slice(0,MAX_SNAPSHOTS)));
+  }catch(e){}
+}
+
+// ============= 加载逻辑：冗余恢复 → initial_data.json =============
+async function loadLocalDB(){
+  // 1. 优先从三份 localStorage 副本中恢复（取最完整的）
+  const recovered=loadFromAllLocalStorages();
+  if(recovered){
+    localDB=recovered;
+    const meta=getMeta();
+    if(meta.first_load)meta.last_load=nowStr();else{meta.first_load=nowStr();meta.last_load=nowStr()}
+    meta.last_qcount=(localDB.questions||[]).length;
+    setMeta(meta);
+    return localDB;
+  }
+
+  // 2. 尝试从快照中恢复
+  const snaps=getSnapshots();
+  for(const s of snaps){if(isCacheValid(s.data)){localDB=s.data;saveLocalDB();return localDB}}
+
+  // 3. 都没有 → 从 initial_data.json 加载静态种子数据
   try{
     const base=(location.pathname.replace(/[^/]+$/,''))||'';
     const url=base+'initial_data.json?v='+DB_VERSION;
@@ -888,7 +1030,8 @@ async function loadLocalDB(){
     const data=await r.json();
     if(isCacheValid(data)){
       localDB=data;
-      localStorage.setItem(DB_CACHE_KEY,JSON.stringify(localDB));
+      saveLocalDB();
+      const meta=getMeta();meta.first_load=nowStr();meta.last_load=nowStr();meta.from_seed=true;setMeta(meta);
     }else{
       console.warn('initial_data.json 数据为空，使用空数据库');
       localDB={questions:[],practice_results:[],settings:[{key:'daily_count',value:'15'}],daily_practice:[]};
@@ -899,16 +1042,93 @@ async function loadLocalDB(){
   }
   return localDB;
 }
-function saveLocalDB(){localStorage.setItem(DB_CACHE_KEY,JSON.stringify(localDB))}
 
-// 手动强制刷新本地数据（清缓存+重新拉取）
+// ============= 数据导出/导入 =============
+function exportLocalDBAsFile(){
+  if(!localDB)return;
+  const meta=getMeta();
+  meta.last_export=nowStr();meta.unexported_changes=0;delete meta.first_unexported_at;setMeta(meta);
+  const payload={version:DB_VERSION,exported_at:nowStr(),qcount:(localDB.questions||[]).length,data:localDB};
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  const d=new Date();
+  const fname=`错题本备份_${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}_${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}.json`;
+  a.href=url;a.download=fname;a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+  toast('已导出备份文件: '+fname,'ok');
+  updateBackupBanner();
+}
+
+async function importBackupFile(file){
+  if(!file)return;
+  const text=await file.text();
+  try{
+    const obj=JSON.parse(text);
+    const data=obj.data||obj;
+    if(!isCacheValid(data)){toast('备份文件无效（没有题目数据）','err');return}
+    if(!confirm(`即将恢复 ${(data.questions||[]).length} 道题。\\n确定要覆盖当前数据吗？（恢复前会自动打快照）`))return;
+    // 恢复前自动打快照
+    saveSnapshot(localDB,'manual_before_restore');
+    localDB=data;
+    saveLocalDB();
+    await Promise.all([refreshStats(),loadSettings()]);
+    if(typeof loadBank==='function')loadBank();
+    toast(`恢复成功，共 ${(data.questions||[]).length} 道题`,'ok');
+    updateBackupBanner();
+  }catch(e){toast('文件解析失败: '+e.message,'err')}
+}
+
+// ============= 手动强制刷新：清全部缓存 + 重新拉取 =============
 async function forceReloadLocalDB(){
-  localStorage.removeItem(DB_CACHE_KEY);
-  useLocalMode=false;
-  localDB=null;
+  // 清之前先强制打快照
+  if(localDB)saveSnapshot(localDB,'manual_before_force_reload');
+  [DB_CACHE_KEY,DB_BACKUP_KEY1,DB_BACKUP_KEY2].forEach(k=>localStorage.removeItem(k));
+  useLocalMode=false;localDB=null;
   await loadLocalDB();
-  console.log('数据已强制刷新，题目数:',(localDB.questions||[]).length);
+  const count=(localDB.questions||[]).length;
+  console.log('数据已强制刷新，题目数:',count);
+  toast('已从服务器刷新数据，共 '+count+' 题','ok');
+  updateBackupBanner();
   return localDB;
+}
+
+// ============= 备份提醒横幅（右上角/Header） =============
+function getHoursSince(iso){if(!iso)return 9999;return(Date.now()-new Date(iso).getTime())/36e5}
+function updateBackupBanner(){
+  const el=$('#backupBanner');
+  if(!el)return;
+  const meta=getMeta();
+  const unexported=meta.unexported_changes||0;
+  const hoursSince=getHoursSince(meta.last_export);
+  let show=false,html='';
+  if(unexported>=UNEXPORTED_WARN_THRESHOLD){
+    show=true;html=`⚠️ <b>${unexported}</b>道新题未备份 · <a onclick="exportLocalDBAsFile()" style="color:inherit;font-weight:700;cursor:pointer;text-decoration:underline">立即下载备份</a>`;
+  }else if(!meta.last_export){
+    show=true;html='🛡️ <a onclick="exportLocalDBAsFile()" style="color:inherit;font-weight:700;cursor:pointer;text-decoration:underline">首次使用请下载备份到手机</a>';
+  }else if(hoursSince>STALE_BACKUP_HOURS){
+    show=true;html=`⏰ 已 <b>${Math.floor(hoursSince)}小时</b>未备份 · <a onclick="exportLocalDBAsFile()" style="color:inherit;font-weight:700;cursor:pointer;text-decoration:underline">下载最新备份</a>`;
+  }
+  el.style.display=show?'block':'none';
+  el.innerHTML=html;
+}
+
+// ============= 手动快照恢复 UI 函数 =============
+function restoreSnapshot(i){
+  const snaps=getSnapshots();
+  const s=snaps[i];
+  if(!s)return;
+  if(!confirm(`恢复快照 [${s.type}] ${s.at.substr(0,16)}\n题目数: ${s.qcount}\n\n确认覆盖当前数据？`))return;
+  saveSnapshot(localDB,'auto_before_restore');
+  localDB=s.data;saveLocalDB();
+  Promise.all([refreshStats(),loadSettings()]).then(()=>{if(typeof loadBank==='function')loadBank()});
+  toast('快照恢复成功','ok');
+}
+function deleteSnapshot(i){
+  if(!confirm('确定删除此快照？'))return;
+  const snaps=getSnapshots();snaps.splice(i,1);
+  localStorage.setItem(DB_SNAPSHOT_KEY,JSON.stringify(snaps));
+  loadSnapshotList();
 }
 
 function filterLocalQuestions(subject){
@@ -2153,6 +2373,39 @@ toast('刷新失败: '+e.message,'err');
 }
 }
 
+function manualTakeSnapshot(){
+  if(!localDB){toast('无数据可快照','err');return}
+  saveSnapshot(localDB,'manual');
+  loadSnapshotList();
+  toast('已创建手动快照','ok');
+}
+
+function loadSnapshotList(){
+  const listEl=$('#snapshotList');
+  const infoEl=$('#snapInfo');
+  if(!listEl)return;
+  const snaps=getSnapshots();
+  if(infoEl)infoEl.textContent='共 '+snaps.length+' 个快照，最多保留 '+MAX_SNAPSHOTS+' 个';
+  if(snaps.length===0){
+    listEl.innerHTML='<div style="padding:16px;text-align:center;color:var(--t3);font-size:.75rem">暂无快照（添加或修改题目后会自动打快照）</div>';
+    return;
+  }
+  const typeLabel={auto_add:'➕ 自动(新增)',auto_mod:'✏️ 自动(修改)',manual:'✋ 手动',manual_before_restore:'🛡️ 恢复前',manual_before_force_reload:'🔄 刷新前',auto_before_restore:'🛡️ 恢复前',EMERGENCY:'🚨 应急'};
+  listEl.innerHTML=snaps.map((s,i)=>{
+    const d=new Date(s.at);
+    const ts=`${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    const urgent=s.type==='EMERGENCY'?'style="background:#fff7ed"':'';
+    return `<div ${urgent} class="snap-row" style="padding:8px 10px;border-bottom:1px solid var(--bd-light);display:flex;align-items:center;gap:8px">
+<div style="flex:1;min-width:0">
+<div style="font-size:.75rem;font-weight:600;color:var(--txt)">${typeLabel[s.type]||s.type} · ${s.qcount}题</div>
+<div style="font-size:.65rem;color:var(--t3)">${ts} · ${s.at.slice(0,10)}</div>
+</div>
+<button class="btn btn-p btn-sm" style="font-size:.65rem;padding:4px 8px" onclick="restoreSnapshot(${i})">恢复</button>
+<button class="btn btn-o btn-sm" style="font-size:.65rem;padding:4px 8px" onclick="deleteSnapshot(${i})">删除</button>
+</div>`;
+  }).join('');
+}
+
 // 初始化
 (async function init(){
 await loadLocalDB();
@@ -2160,6 +2413,8 @@ console.log('本地数据库已加载，题目数:',(localDB.questions||[]).leng
 if((localDB.questions||[]).length===0){
 console.warn('⚠️ 本地数据为空！请在设置页面点击"强制刷新数据"按钮');
 }
+updateBackupBanner();
+loadSnapshotList();
 await Promise.all([refreshStats(),loadSettings()]);
 if(Notification.permission==='granted'){const rt=localStorage.getItem('remind_time');if(rt)scheduleReminder(rt)}
 initLazyLoad();
