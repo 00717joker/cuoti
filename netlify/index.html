@@ -879,8 +879,11 @@ async function loadLocalDB(){
     }catch(e){localStorage.removeItem(DB_CACHE_KEY)}
   }
   // 2. 缓存无效或不存在，强制从 initial_data.json 拉取最新数据
+  // 使用相对路径以兼容子路径部署（如 GitHub Pages 的 /repo/ 子路径）
   try{
-    const r=await fetch('/initial_data.json?v='+DB_VERSION,{cache:'no-cache'});
+    const base=(location.pathname.replace(/[^/]+$/,''))||'';
+    const url=base+'initial_data.json?v='+DB_VERSION;
+    const r=await fetch(url,{cache:'no-cache'});
     if(!r.ok)throw new Error('HTTP '+r.status);
     const data=await r.json();
     if(isCacheValid(data)){
