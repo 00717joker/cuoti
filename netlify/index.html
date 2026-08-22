@@ -768,6 +768,12 @@ header p{font-size:.75rem;margin-top:2px}
 <div id="backupList" style="display:none;max-height:300px;overflow-y:auto"></div>
 </div>
 <div style="margin-top:12px;border-top:1px solid var(--bd);padding-top:8px">
+<h3 style="font-size:.85rem;font-weight:600;margin:0 0 8px">🔄 数据修复</h3>
+<p style="font-size:.7rem;color:var(--t2);margin-bottom:8px">如果看不到题目，点此强制刷新本地数据（清除浏览器缓存并重新加载）</p>
+<button class="btn btn-p btn-sm" onclick="manualRefreshData()" style="width:100%">🔄 强制刷新数据</button>
+<p style="font-size:.65rem;color:var(--t2);margin-top:4px" id="refreshStatus"></p>
+</div>
+<div style="margin-top:12px;border-top:1px solid var(--bd);padding-top:8px">
 <p style="font-size:.7rem;color:var(--t2);margin-bottom:4px">数据同步（需先启动在线版服务器）</p>
 <div class="set-row"><label>服务器地址</label><input type="text" id="setSyncUrl" placeholder="http://127.0.0.1:5000" style="flex:1"></div>
 <div style="display:flex;gap:6px;margin-top:8px">
@@ -849,14 +855,58 @@ const SUBJECT_LABELS={math:'高数',linear:'线代',probability:'概率'};
 const RAILWAY_URL='https://cuoti-production.up.railway.app';
 let useLocalMode=false;
 let localDB=null;
+const DB_CACHE_KEY='_offlineDB_v3';
+const DB_VERSION='v3';
+
+// 判断缓存是否有效（必须有 questions 数组且非空，或明确标记无数据）
+function isCacheValid(db){
+  if(!db||typeof db!=='object')return false;
+  if(!Array.isArray(db.questions))return false;
+  // 空题目缓存无效，必须重新拉取
+  if(db.questions.length===0)return false;
+  return true;
+}
 
 async function loadLocalDB(){
-  const cached=localStorage.getItem('_offlineDB_v2');
-  if(cached){try{localDB=JSON.parse(cached);return localDB}catch(e){}}
-  try{const r=await fetch('/initial_data.json');localDB=await r.json();localStorage.setItem('_offlineDB_v2',JSON.stringify(localDB))}catch(e){localDB={questions:[],practice_results:[],settings:[{key:'daily_count',value:'15'}]}}
+  // 1. 先尝试缓存（必须是有效数据）
+  const cached=localStorage.getItem(DB_CACHE_KEY);
+  if(cached){
+    try{
+      const parsed=JSON.parse(cached);
+      if(isCacheValid(parsed)){localDB=parsed;return localDB}
+      // 缓存无效，清掉重来
+      localStorage.removeItem(DB_CACHE_KEY);
+    }catch(e){localStorage.removeItem(DB_CACHE_KEY)}
+  }
+  // 2. 缓存无效或不存在，强制从 initial_data.json 拉取最新数据
+  try{
+    const r=await fetch('/initial_data.json?v='+DB_VERSION,{cache:'no-cache'});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    const data=await r.json();
+    if(isCacheValid(data)){
+      localDB=data;
+      localStorage.setItem(DB_CACHE_KEY,JSON.stringify(localDB));
+    }else{
+      console.warn('initial_data.json 数据为空，使用空数据库');
+      localDB={questions:[],practice_results:[],settings:[{key:'daily_count',value:'15'}],daily_practice:[]};
+    }
+  }catch(e){
+    console.error('加载 initial_data.json 失败:',e);
+    localDB={questions:[],practice_results:[],settings:[{key:'daily_count',value:'15'}],daily_practice:[]};
+  }
   return localDB;
 }
-function saveLocalDB(){localStorage.setItem('_offlineDB_v2',JSON.stringify(localDB))}
+function saveLocalDB(){localStorage.setItem(DB_CACHE_KEY,JSON.stringify(localDB))}
+
+// 手动强制刷新本地数据（清缓存+重新拉取）
+async function forceReloadLocalDB(){
+  localStorage.removeItem(DB_CACHE_KEY);
+  useLocalMode=false;
+  localDB=null;
+  await loadLocalDB();
+  console.log('数据已强制刷新，题目数:',(localDB.questions||[]).length);
+  return localDB;
+}
 
 function filterLocalQuestions(subject){
   let qs=localDB.questions||[];
@@ -2080,10 +2130,33 @@ status.style.color='var(--succ)';
 }
 }
 
+async function manualRefreshData(){
+const status=$('#refreshStatus');
+if(status){status.textContent='正在刷新...';status.style.color='var(--warn)'}
+try{
+await forceReloadLocalDB();
+const count=(localDB.questions||[]).length;
+if(status){
+status.textContent='✓ 刷新成功，共 '+count+' 道题';
+status.style.color='var(--succ)';
+}
+await Promise.all([refreshStats(),loadSettings()]);
+if(typeof switchTab==='function'&&$('#tab-bank'))switchTab('bank');
+if(typeof loadBank==='function')loadBank();
+toast('数据已刷新，共 '+count+' 道题','ok');
+}catch(e){
+if(status){status.textContent='刷新失败: '+e.message;status.style.color='var(--err)'}
+toast('刷新失败: '+e.message,'err');
+}
+}
+
 // 初始化
 (async function init(){
 await loadLocalDB();
-console.log('本地数据库已加载，题目数:',localDB.questions.length);
+console.log('本地数据库已加载，题目数:',(localDB.questions||[]).length);
+if((localDB.questions||[]).length===0){
+console.warn('⚠️ 本地数据为空！请在设置页面点击"强制刷新数据"按钮');
+}
 await Promise.all([refreshStats(),loadSettings()]);
 if(Notification.permission==='granted'){const rt=localStorage.getItem('remind_time');if(rt)scheduleReminder(rt)}
 initLazyLoad();
