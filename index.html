@@ -1995,7 +1995,7 @@ async function pushDBToGitHub(){
   if(el){el.textContent='正在推送到 GitHub...';el.style.color='var(--t3)'}
   const r=await syncDBToGitHub();
   if(r.ok){
-    if(el){el.innerHTML=`✅ 推送完成：${r.qcount} 道题已上传到 GitHub`};el.style.color='var(--succ)'}
+    if(el){el.innerHTML=`✅ 推送完成：${r.qcount} 道题已上传到 GitHub`;el.style.color='var(--succ)'}
     toast(`推送成功 ${r.qcount} 题`,'ok');
   }else{
     if(el){el.textContent='推送失败：'+(r.error||'未知');el.style.color='var(--err)'}
