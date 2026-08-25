@@ -833,6 +833,22 @@ header p{font-size:.75rem;margin-top:2px}
 </div>
 
 <div style="margin-top:12px;border-top:1px solid var(--bd);padding-top:8px">
+<h3 style="font-size:.85rem;font-weight:600;margin:0 0 8px">🔄 题库跨设备同步</h3>
+<p style="font-size:.7rem;color:var(--t2);margin-bottom:6px">配置好 GitHub Token 后，每次添加/练习会自动同步题库到 GitHub 仓库的 <code>data/db.json</code>。<br>其他设备打开网站时自动拉取最新题库。</p>
+<div id="syncStatusBadge" style="display:none;font-size:.7rem;padding:6px 10px;background:var(--card);border-radius:8px;margin-bottom:8px;line-height:1.5"></div>
+<div style="display:flex;gap:6px;flex-wrap:wrap">
+<button class="btn btn-p btn-sm" style="flex:1" onclick="fullSyncDB()">🔄 立即双向同步</button>
+<button class="btn btn-s btn-sm" style="flex:1" onclick="pullDBFromGitHub()">⬇️ 仅拉取远端</button>
+<button class="btn btn-o btn-sm" style="flex:1" onclick="pushDBToGitHub()">⬆️ 仅推送本地</button>
+</div>
+<label style="display:flex;align-items:center;gap:6px;font-size:.7rem;color:var(--t2);margin-top:6px;cursor:pointer">
+<input type="checkbox" id="setAutoSync" onchange="toggleAutoSync(this.checked)" style="cursor:pointer">
+启动时自动拉取最新数据（推荐）
+</label>
+<p id="pullResult" style="font-size:.65rem;color:var(--t2);margin-top:4px"></p>
+</div>
+
+<div style="margin-top:12px;border-top:1px solid var(--bd);padding-top:8px">
 <p style="font-size:.7rem;color:var(--t2);margin-bottom:4px">数据同步（需先启动在线版服务器）</p>
 <div class="set-row"><label>服务器地址</label><input type="text" id="setSyncUrl" placeholder="http://127.0.0.1:5000" style="flex:1"></div>
 <div style="display:flex;gap:6px;margin-top:8px">
@@ -1046,6 +1062,8 @@ function saveLocalDB(opts={}){
   }
   // 5. 更新备份提醒横幅
   try{if(typeof updateBackupBanner==='function')updateBackupBanner()}catch(e){}
+  // 6. 触发 GitHub 数据库同步（防抖 3 秒）
+  try{if(typeof scheduleDBSync==='function')scheduleDBSync()}catch(e){}
   return true;
 }
 
@@ -1667,9 +1685,12 @@ async function storeImage(dataurl){
       const path=`images/${fname}`;
       const url=await ghUploadBlob(c.user,c.repo,branch,path,dataurl,c.token);
       console.log('[图床] 上传成功:',url);
+      // 立刻触发数据库同步，让引用关系也同步到 GitHub
+      try{scheduleDBSync()}catch(e){}
       return 'gh:'+url;
     }catch(e){
-      toast('GitHub上传失败，已降级到本地IndexedDB：'+e.message,'err');
+      console.error('[图床] GitHub上传失败，降级到IDB:',e);
+      toast('GitHub上传失败：'+e.message+'。已降级到本地IndexedDB（仅本设备可见）','err');
       // 降级
       try{const blob=dataURLtoBlob(dataurl);await idbPut(h,blob);return 'idb:'+h}catch(e2){return 'base64:'+dataurl}
     }
@@ -1682,6 +1703,329 @@ async function storeImage(dataurl){
     await idbPut(h,blob);
     return 'idb:'+h;
   }
+}
+
+// ═══════════════════════════════════════════════
+// ═══     题目数据库 GitHub 跨设备同步          ═══
+// ═══════════════════════════════════════════════
+// 把整个 localDB（已剔除图片本体）作为 JSON 提交到
+// gh-pages 分支 /data/db.json，实现跨设备同步。
+// 引擎：gh_cfg 配置好 Token 后启用。
+
+const GH_DB_PATH='data/db.json';
+let _dbSyncTimer=null;
+let _dbSyncing=false;
+let _lastSyncSHA=null;
+let _lastSyncAt=0;
+
+function ghDbConfigured(){
+  const c=getGhCfg();
+  return !!(c.user&&c.repo&&c.token);
+}
+
+// 防抖：写入后 3 秒内若没有新写入，再同步
+function scheduleDBSync(){
+  if(!ghDbConfigured())return;
+  if(_dbSyncTimer)clearTimeout(_dbSyncTimer);
+  _dbSyncTimer=setTimeout(()=>{syncDBToGitHub().catch(e=>console.warn('[DB Sync] 失败:',e))},3000);
+}
+
+// 把 localDB 序列化为精简版（剔除 base64 图片本体，只留引用）
+function serializeDBForSync(){
+  const q=(localDB.questions||[]).map(q=>{
+    // 保留 image_data 引用但确保不是巨大的 base64
+    let img=q.image_data;
+    if(img&&(img.startsWith('data:')||img.startsWith('base64:'))){
+      // 内嵌 base64 同步时保留但标记（小于 200KB 的小图直接保留）
+      if(img.length>200*1024/0.75){img='__INLINE_TOO_LARGE__:'+img.slice(0,30)+'...'}
+    }
+    return {...q,image_data:img};
+  });
+  return {
+    version:DB_VERSION,
+    synced_at:nowStr(),
+    device:navigator.userAgent.slice(0,80),
+    questions:q,
+    practice_results:localDB.practice_results||[],
+    settings:localDB.settings||[],
+    daily_practice:localDB.daily_practice||[]
+  };
+}
+
+async function ghGetFileSHA(user,repo,branch,path,token){
+  try{
+    const r=await fetch(`https://api.github.com/repos/${user}/${repo}/contents/${path}?ref=${branch}`,{
+      headers:{'Authorization':`token ${token}`,'Accept':'application/vnd.github+json'}
+    });
+    if(!r.ok)return null;
+    const j=await r.json();return j.sha;
+  }catch(e){return null}
+}
+
+async function ghGetFileContent(user,repo,branch,path,token){
+  try{
+    const r=await fetch(`https://api.github.com/repos/${user}/${repo}/contents/${path}?ref=${branch}`,{
+      headers:{'Authorization':`token ${token}`,'Accept':'application/vnd.github+json'}
+    });
+    if(!r.ok)return null;
+    const j=await r.json();
+    if(j.content){
+      // Base64 解码
+      const b64=j.content.replace(/\s/g,'');
+      const txt=atob(b64);
+      return JSON.parse(txt);
+    }
+    if(j.download_url){
+      const r2=await fetch(j.download_url,{cache:'no-cache'});
+      return await r2.json();
+    }
+    return null;
+  }catch(e){console.warn('[DB Sync] 拉取失败:',e);return null}
+}
+
+async function ghPutFile(user,repo,branch,path,content,token,msg){
+  const sha=await ghGetFileSHA(user,repo,branch,path,token);
+  const body={message:msg||`sync db ${new Date().toISOString()}`,content:btoa(unescape(encodeURIComponent(content))),branch};
+  if(sha)body.sha=sha;
+  const r=await fetch(`https://api.github.com/repos/${user}/${repo}/contents/${path}`,{
+    method:'PUT',
+    headers:{'Authorization':`token ${token}`,'Accept':'application/vnd.github+json','Content-Type':'application/json'},
+    body:JSON.stringify(body)
+  });
+  if(!r.ok)throw new Error('GitHub API '+r.status+': '+(await r.text()).slice(0,300));
+  const j=await r.json();
+  return j.content?.sha||sha;
+}
+
+// 把当前 localDB 推到 GitHub
+async function syncDBToGitHub(){
+  if(!ghDbConfigured())return {ok:false,reason:'未配置Token'};
+  if(_dbSyncing)return {ok:false,reason:'正在同步中'};
+  _dbSyncing=true;
+  updateSyncStatus('syncing');
+  try{
+    const c=getGhCfg();
+    const branch=c.branch||'gh-pages';
+    const payload=serializeDBForSync();
+    const jsonStr=JSON.stringify(payload,null,2);
+    const sha=await ghPutFile(c.user,c.repo,branch,GH_DB_PATH,jsonStr,c.token,`sync DB @ ${nowStr()} (q:${payload.questions.length})`);
+    _lastSyncSHA=sha;
+    _lastSyncAt=Date.now();
+    const meta=getMeta();meta.last_gh_sync=nowStr();meta.last_gh_qcount=payload.questions.length;setMeta(meta);
+    updateSyncStatus('ok',payload.questions.length);
+    return {ok:true,sha,qcount:payload.questions.length};
+  }catch(e){
+    console.error('[DB Sync] 推送失败:',e);
+    updateSyncStatus('error',e.message);
+    return {ok:false,error:e.message};
+  }finally{
+    _dbSyncing=false;
+  }
+}
+
+// 从 GitHub 拉取最新 DB（启动时调用）
+async function loadDBFromGitHub(){
+  if(!ghDbConfigured())return null;
+  try{
+    const c=getGhCfg();
+    const branch=c.branch||'gh-pages';
+    const data=await ghGetFileContent(c.user,c.repo,branch,GH_DB_PATH,c.token);
+    if(!data||!data.questions){return null}
+    // 合并：远端优先，但保留本地的图片本体（如果远端引用了 idb:xxx 但本地IDB有）
+    // 对于纯题目字段（错次、对错、掌握、笔记），远端优先
+    // 对于 image_data：远端是 gh:URL 或 idb:ref；idb:ref 需本地有数据
+    // 实际上：直接用远端数据（远端是权威源）
+    return data;
+  }catch(e){
+    console.warn('[DB Sync] 加载失败:',e);
+    return null;
+  }
+}
+
+// 手动同步：拉取远端 → 合并 → 推送本地
+async function fullSyncDB(){
+  if(!ghDbConfigured()){toast('请先配置 GitHub Token','err');return}
+  updateSyncStatus('syncing');
+  toast('正在同步...','ok');
+  // 1. 先拉取远端
+  const remote=await loadDBFromGitHub();
+  if(remote){
+    // 合并策略：以题号+章节+subject 为唯一键，远端和本地都有的取较新字段
+    const localQ=localDB.questions||[];
+    const remoteQ=remote.questions||[];
+    const key=q=>`${q.subject||'math'}|${q.chapter||''}|${q.question_number||''}|${q.section||''}`;
+    const localMap=new Map(localQ.map(q=>[key(q),q]));
+    const remoteMap=new Map(remoteQ.map(q=>[key(q),q]));
+    const merged=[];
+    const seenKeys=new Set();
+    // 先加入远端所有题
+    for(const rq of remoteQ){
+      const k=key(rq);
+      const lq=localMap.get(k);
+      if(lq){
+        // 合并：远端权威字段优先，但保留本地的 idb: 引用如果远端是 idb: 且本地有
+        const merged_q={...lq,...rq};
+        // image_data 处理：如果远端是 gh: 直接用；如果远端是 idb: 但本地 idb 有该数据，保留；
+        // 如果远端 idb: 但本地没有，则置空
+        if(rq.image_data&&rq.image_data.startsWith('idb:')){
+          const id=rq.image_data.slice(4);
+          try{const rec=await idbGet(id);if(!rec){merged_q.image_data=null}}catch(e){}
+        }
+        // 时间字段：取较新的
+        if(lq.last_wrong_date&&rq.last_wrong_date){
+          merged_q.last_wrong_date=lq.last_wrong_date>rq.last_wrong_date?lq.last_wrong_date:rq.last_wrong_date;
+        }
+        merged.push(merged_q);
+      }else{
+        // 远端独有
+        const merged_q={...rq};
+        if(rq.image_data&&rq.image_data.startsWith('idb:')){
+          const id=rq.image_data.slice(4);
+          try{const rec=await idbGet(id);if(!rec){merged_q.image_data=null}}catch(e){}
+        }
+        merged.push(merged_q);
+      }
+      seenKeys.add(k);
+    }
+    // 加入本地独有的
+    for(const lq of localQ){
+      const k=key(lq);
+      if(!seenKeys.has(k))merged.push({...lq});
+    }
+    // practice_results 合并去重
+    const prLocal=localDB.practice_results||[];
+    const prRemote=remote.practice_results||[];
+    const prMap=new Map();
+    for(const pr of prRemote)prMap.set(`${pr.question_id}|${pr.date}|${pr.result}`,pr);
+    for(const pr of prLocal){const k=`${pr.question_id}|${pr.date}|${pr.result}`;if(!prMap.has(k))prMap.set(k,pr)}
+    const mergedPR=[...prMap.values()];
+    // settings 取远端优先
+    const mergedSettings=(remote.settings&&remote.settings.length)?remote.settings:(localDB.settings||[]);
+    localDB.questions=merged;
+    localDB.practice_results=mergedPR;
+    localDB.settings=mergedSettings;
+    localDB.daily_practice=remote.daily_practice||localDB.daily_practice||[];
+    saveLocalDB();
+    console.log('[DB Sync] 合并完成: 本地'+localQ.length+'题 + 远端'+remoteQ.length+'题 → '+merged.length+'题');
+  }else{
+    console.log('[DB Sync] 远端无数据，将推送本地数据上去');
+  }
+  // 2. 推送合并后的本地数据到远端
+  const r=await syncDBToGitHub();
+  if(r.ok){
+    toast(`同步成功！共 ${r.qcount} 题已推送到 GitHub`,'ok');
+    await Promise.all([refreshStats(),loadSettings()]);
+    if(typeof loadBank==='function')loadBank();
+  }else{
+    toast('同步失败：'+(r.error||'未知错误'),'err');
+  }
+  return r;
+}
+
+function updateSyncStatus(state,info){
+  const el=$('#syncStatusBadge');
+  if(!el)return;
+  const cfg=ghDbConfigured();
+  if(!cfg){
+    el.style.display='block';
+    el.style.color='var(--t3)';
+    el.innerHTML='同步未启用：请在上方图片设置里配置 GitHub Token';
+    return;
+  }
+  el.style.display='block';
+  if(state==='syncing'){
+    el.style.color='var(--acc)';
+    el.innerHTML='🔄 正在同步到 GitHub...';
+  }else if(state==='ok'){
+    el.style.color='var(--succ)';
+    el.innerHTML=`✅ 已同步 GitHub · ${info||0} 题 · <span style="font-size:.65rem">${new Date().toLocaleTimeString()}</span>`;
+  }else if(state==='error'){
+    el.style.color='var(--err)';
+    el.innerHTML='❌ 同步失败：'+(info||'').slice(0,80);
+  }else{
+    const meta=getMeta();
+    if(meta.last_gh_sync){
+      el.style.color='var(--succ)';
+      el.innerHTML=`✅ 上次同步：${meta.last_gh_sync.slice(0,16)} · ${meta.last_gh_qcount||0}题`;
+    }else{
+      el.style.color='var(--warn)';
+      el.innerHTML='⚠️ 已配置但未同步过，点下方按钮开始首次同步';
+    }
+  }
+}
+
+// 仅拉取：用远端覆盖本地
+async function pullDBFromGitHub(){
+  if(!ghDbConfigured()){toast('请先配置 GitHub Token','err');return}
+  const el=$('#pullResult');
+  if(el){el.textContent='正在拉取远端数据...';el.style.color='var(--t3)'}
+  updateSyncStatus('syncing');
+  const remote=await loadDBFromGitHub();
+  if(!remote||!remote.questions){
+    if(el){el.textContent='远端没有数据，请先用"推送本地"上传一次';el.style.color='var(--warn)'}
+    updateSyncStatus('error','远端无数据');
+    toast('远端无数据','err');return;
+  }
+  // 远端数据覆盖本地（保留本地 idb: 图片引用对应的 IDB 数据）
+  const remoteQ=remote.questions||[];
+  for(const rq of remoteQ){
+    if(rq.image_data&&rq.image_data.startsWith('idb:')){
+      const id=rq.image_data.slice(4);
+      try{const rec=await idbGet(id);if(!rec){rq.image_data=null}}catch(e){rq.image_data=null}
+    }
+  }
+  saveSnapshot(localDB,'before_pull');
+  localDB.questions=remoteQ;
+  localDB.practice_results=remote.practice_results||[];
+  localDB.settings=remote.settings&&remote.settings.length?remote.settings:(localDB.settings||[]);
+  localDB.daily_practice=remote.daily_practice||[];
+  saveLocalDB({force:true});
+  const cnt=remoteQ.length;
+  if(el){el.innerHTML=`✅ 拉取完成：${cnt} 道题（来源：${remote.device||'未知设备'}，同步于 ${remote.synced_at?remote.synced_at.slice(0,16):'未知'}）`;el.style.color='var(--succ)'}
+  updateSyncStatus('ok',cnt);
+  await Promise.all([refreshStats(),loadSettings()]);
+  if(typeof loadBank==='function')loadBank();
+  toast(`已拉取 ${cnt} 道题`,'ok');
+}
+
+// 仅推送：本地推到远端（覆盖）
+async function pushDBToGitHub(){
+  if(!ghDbConfigured()){toast('请先配置 GitHub Token','err');return}
+  const el=$('#pullResult');
+  if(el){el.textContent='正在推送到 GitHub...';el.style.color='var(--t3)'}
+  const r=await syncDBToGitHub();
+  if(r.ok){
+    if(el){el.innerHTML=`✅ 推送完成：${r.qcount} 道题已上传到 GitHub`};el.style.color='var(--succ)'}
+    toast(`推送成功 ${r.qcount} 题`,'ok');
+  }else{
+    if(el){el.textContent='推送失败：'+(r.error||'未知');el.style.color='var(--err)'}
+    toast('推送失败','err');
+  }
+}
+
+function toggleAutoSync(checked){
+  localStorage.setItem('auto_sync',checked?'1':'0');
+  toast(checked?'已开启启动时自动同步':'已关闭自动同步','ok');
+}
+
+// 启动时调用：如果开启自动同步，且远端有更新，则拉取
+async function autoSyncOnStartup(){
+  if(localStorage.getItem('auto_sync')!=='1')return;
+  if(!ghDbConfigured())return;
+  try{
+    const remote=await loadDBFromGitHub();
+    if(!remote||!remote.questions)return;
+    const meta=getMeta();
+    // 如果远端比本地新（synced_at 比 last_gh_sync 新），则拉取
+    if(remote.synced_at&&meta.last_gh_sync&&remote.synced_at>meta.last_gh_sync){
+      console.log('[DB Sync] 检测到远端有更新，自动拉取');
+      await pullDBFromGitHub();
+    }else if(!meta.last_gh_sync){
+      // 首次：远端有数据则拉取
+      console.log('[DB Sync] 首次启动且远端有数据，自动拉取');
+      await pullDBFromGitHub();
+    }
+  }catch(e){console.warn('[DB Sync] 自动拉取失败:',e)}
 }
 
 // 统一对外：根据引用字符串获取图片可展示 URL（一次性objectURL或直接URL）
@@ -2424,6 +2768,8 @@ if(gh.user)$('#setGhUser').value=gh.user;else{const m=location.hostname.match(/^
 if(gh.repo)$('#setGhRepo').value=gh.repo;else{const m=location.pathname.match(/^\/([^/]+)\//);if(m)$('#setGhRepo').value=m[1]}
 if(gh.token)$('#setGhToken').value=gh.token;
 if(gh.branch)$('#setGhBranch').value=gh.branch;
+const autoSync=$('#setAutoSync');if(autoSync)autoSync.checked=(localStorage.getItem('auto_sync')==='1');
+updateSyncStatus();
 updateReminderStatus();updateStreak();
 setTimeout(refreshStorageStats,300);
 }
@@ -2894,6 +3240,8 @@ console.warn('⚠️ 本地数据为空！请在设置页面点击"强制刷新�
 updateBackupBanner();
 loadSnapshotList();
 await Promise.all([refreshStats(),loadSettings()]);
+// 启动时自动拉取远端数据（如果开启）
+setTimeout(autoSyncOnStartup,2000);
 if(Notification.permission==='granted'){const rt=localStorage.getItem('remind_time');if(rt)scheduleReminder(rt)}
 initLazyLoad();
 checkAutoBackup();
