@@ -1638,6 +1638,7 @@ async function ghGetFileSHA(user,repo,branch,path,token){
 async function ghUploadBlob(user,repo,branch,path,dataurl,token){
   const parts=dataurl.split(',');
   const base64=parts[1];
+  if(!base64)throw new Error('图片数据格式错误');
   const sha=await ghGetFileSHA(user,repo,branch,path,token);
   const msg=`add image: ${path}`;
   const body={message:msg,content:base64,branch};
@@ -1647,7 +1648,12 @@ async function ghUploadBlob(user,repo,branch,path,dataurl,token){
     headers:{'Authorization':`token ${token}`,'Accept':'application/vnd.github+json','Content-Type':'application/json'},
     body:JSON.stringify(body)
   });
-  if(!r.ok)throw new Error('GitHub API '+r.status+': '+(await r.text()).slice(0,200));
+  if(!r.ok){
+    const errText=await r.text();
+    let errMsg='HTTP '+r.status;
+    try{const j=JSON.parse(errText);if(j.message)errMsg+=': '+j.message}catch(e){errMsg+=': '+errText.slice(0,150)}
+    throw new Error('图片上传失败 '+errMsg);
+  }
   // 构造 Pages 直链
   return `https://${user}.github.io/${repo}/`+path;
 }
@@ -1735,11 +1741,10 @@ function scheduleDBSync(){
 // 把 localDB 序列化为精简版（剔除 base64 图片本体，只留引用）
 function serializeDBForSync(){
   const q=(localDB.questions||[]).map(q=>{
-    // 保留 image_data 引用但确保不是巨大的 base64
+    // 同步时完全跳过内嵌 base64 图片（太大），只保留 gh: 和 idb: 引用
     let img=q.image_data;
     if(img&&(img.startsWith('data:')||img.startsWith('base64:'))){
-      // 内嵌 base64 同步时保留但标记（小于 200KB 的小图直接保留）
-      if(img.length>200*1024/0.75){img='__INLINE_TOO_LARGE__:'+img.slice(0,30)+'...'}
+      img=null; // 内嵌图片不上传到 GitHub db.json，需先通过 storeImage 迁移
     }
     return {...q,image_data:img};
   });
@@ -1806,6 +1811,10 @@ async function ghPutFile(user,repo,branch,path,content,token,msg){
     binary+=String.fromCharCode.apply(null,bytes.subarray(i,i+chunk));
   }
   const base64=btoa(binary);
+  // GitHub Contents API 限制 1MB
+  if(base64.length>1024*1024){
+    throw new Error(`数据太大(${Math.round(base64.length/1024)}KB)，超过GitHub API 1MB限制。请先去重或迁移图片到GitHub图床`);
+  }
   const body={message:msg||`sync db ${new Date().toISOString()}`,content:base64,branch};
   if(sha)body.sha=sha;
   const r=await fetch(`https://api.github.com/repos/${user}/${repo}/contents/${path}`,{
@@ -1813,15 +1822,20 @@ async function ghPutFile(user,repo,branch,path,content,token,msg){
     headers:{'Authorization':`token ${token}`,'Accept':'application/vnd.github+json','Content-Type':'application/json'},
     body:JSON.stringify(body)
   });
-  if(!r.ok)throw new Error('GitHub API '+r.status+': '+(await r.text()).slice(0,300));
+  if(!r.ok){
+    const errText=await r.text();
+    let errMsg='HTTP '+r.status;
+    try{const j=JSON.parse(errText);if(j.message)errMsg+=': '+j.message}catch(e){errMsg+=': '+errText.slice(0,200)}
+    throw new Error('GitHub API '+errMsg);
+  }
   const j=await r.json();
   return j.content?.sha||sha;
 }
 
 // 把当前 localDB 推到 GitHub
 async function syncDBToGitHub(){
-  if(!ghDbConfigured())return {ok:false,reason:'未配置Token',error:'未配置GitHub Token，请先在图片设置中填写'};
-  if(_dbSyncing)return {ok:false,reason:'正在同步中',error:'上一次同步还在进行中'};
+  if(!ghDbConfigured())return {ok:false,reason:'未配置Token'};
+  if(_dbSyncing)return {ok:false,reason:'正在同步中'};
   _dbSyncing=true;
   updateSyncStatus('syncing');
   try{
@@ -1829,15 +1843,6 @@ async function syncDBToGitHub(){
     const branch=c.branch||'gh-pages';
     const payload=serializeDBForSync();
     const jsonStr=JSON.stringify(payload,null,2);
-    // 检查文件大小（GitHub Contents API 限制 1MB）
-    const sizeKb=Math.round(jsonStr.length/1024);
-    console.log(`[DB Sync] 准备推送：${payload.questions.length} 题，${sizeKb} KB`);
-    if(sizeKb>1024){
-      const msg=`数据太大（${sizeKb}KB > 1MB），请先去重或清理内嵌图片`;
-      toast(msg,'err');
-      updateSyncStatus('error',msg);
-      return {ok:false,error:msg};
-    }
     const sha=await ghPutFile(c.user,c.repo,branch,GH_DB_PATH,jsonStr,c.token,`sync DB @ ${nowStr()} (q:${payload.questions.length})`);
     _lastSyncSHA=sha;
     _lastSyncAt=Date.now();
@@ -1845,17 +1850,9 @@ async function syncDBToGitHub(){
     updateSyncStatus('ok',payload.questions.length);
     return {ok:true,sha,qcount:payload.questions.length};
   }catch(e){
-    const msg=e.message||String(e);
-    console.error('[DB Sync] 推送失败:',msg);
-    // 提供更友好的错误信息
-    let friendly=msg;
-    if(msg.includes('401'))friendly='Token无效或已过期，请重新生成';
-    else if(msg.includes('403'))friendly='Token权限不足（需要repo权限）或仓库不存在';
-    else if(msg.includes('404'))friendly=`仓库或分支不存在：${getGhCfg().user}/${getGhCfg().repo}:${getGhCfg().branch||'gh-pages'}`;
-    else if(msg.includes('422'))friendly='文件过大或格式错误（GitHub API限制1MB）';
-    else if(msg.includes('Failed to fetch'))friendly='网络请求失败，可能是CORS或网络问题';
-    updateSyncStatus('error',friendly);
-    return {ok:false,error:friendly,raw:msg};
+    console.error('[DB Sync] 推送失败:',e);
+    updateSyncStatus('error',e.message);
+    return {ok:false,error:e.message};
   }finally{
     _dbSyncing=false;
   }
@@ -1869,10 +1866,12 @@ async function loadDBFromGitHub(){
     const branch=c.branch||'gh-pages';
     const data=await ghGetFileContent(c.user,c.repo,branch,GH_DB_PATH,c.token);
     if(!data||!data.questions){return null}
-    // 合并：远端优先，但保留本地的图片本体（如果远端引用了 idb:xxx 但本地IDB有）
-    // 对于纯题目字段（错次、对错、掌握、笔记），远端优先
-    // 对于 image_data：远端是 gh:URL 或 idb:ref；idb:ref 需本地有数据
-    // 实际上：直接用远端数据（远端是权威源）
+    // 乱码检测：检查是否有典型的 UTF-8 解码错误字符
+    const sample=JSON.stringify(data.questions.slice(0,5));
+    if(sample.includes('\ufffd')||sample.includes('Ã')||sample.includes('Â')){
+      console.error('[DB Sync] 远端数据检测到乱码，拒绝使用');
+      return null;
+    }
     return data;
   }catch(e){
     console.warn('[DB Sync] 加载失败:',e);
@@ -1957,8 +1956,7 @@ async function fullSyncDB(){
     await Promise.all([refreshStats(),loadSettings()]);
     if(typeof loadBank==='function')loadBank();
   }else{
-    toast('同步失败：'+(r.error||r.reason||'未知错误'),'err');
-    console.log('[DB Sync] 详细错误:',r);
+    toast('同步失败：'+(r.error||'未知错误'),'err');
   }
   return r;
 }
