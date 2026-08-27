@@ -841,6 +841,8 @@ header p{font-size:.75rem;margin-top:2px}
 <button class="btn btn-s btn-sm" style="flex:1" onclick="pullDBFromGitHub()">⬇️ 仅拉取远端</button>
 <button class="btn btn-o btn-sm" style="flex:1" onclick="pushDBToGitHub()">⬆️ 仅推送本地</button>
 </div>
+<button class="btn btn-o btn-sm" style="margin-top:6px;width:100%" onclick="doDeduplicate()">🧹 去除重复题目（合并相同题）</button>
+<p style="font-size:.65rem;color:var(--t3);margin-top:2px">如果同步后题数翻倍，点此去重。以"学科+章节+题号+小节"为唯一键，保留信息最全的。</p>
 <label style="display:flex;align-items:center;gap:6px;font-size:.7rem;color:var(--t2);margin-top:6px;cursor:pointer">
 <input type="checkbox" id="setAutoSync" onchange="toggleAutoSync(this.checked)" style="cursor:pointer">
 启动时自动拉取最新数据（推荐）
@@ -1924,8 +1926,10 @@ async function fullSyncDB(){
     localDB.practice_results=mergedPR;
     localDB.settings=mergedSettings;
     localDB.daily_practice=remote.daily_practice||localDB.daily_practice||[];
+    // 去重保护：合并后再做一次严格去重
+    localDB.questions=dedupeQuestions(localDB.questions);
     saveLocalDB();
-    console.log('[DB Sync] 合并完成: 本地'+localQ.length+'题 + 远端'+remoteQ.length+'题 → '+merged.length+'题');
+    console.log('[DB Sync] 合并完成: 本地'+localQ.length+'题 + 远端'+remoteQ.length+'题 → '+localDB.questions.length+'题');
   }else{
     console.log('[DB Sync] 远端无数据，将推送本地数据上去');
   }
@@ -1939,6 +1943,73 @@ async function fullSyncDB(){
     toast('同步失败：'+(r.error||'未知错误'),'err');
   }
   return r;
+}
+
+// ═══ 去重函数：以 subject+chapter+question_number 为唯一键 ═══
+function dedupeQuestions(qs){
+  if(!qs||!qs.length)return qs;
+  const key=q=>{
+    const s=(q.subject||'math').trim().toLowerCase();
+    const c=(q.chapter||'').trim();
+    const n=(q.question_number||'').trim().toLowerCase();
+    // section 空值统一处理，避免 '' vs null 导致重复
+    const sec=(q.section||'').trim();
+    return `${s}|${c}|${n}|${sec}`;
+  };
+  const map=new Map();
+  for(const q of qs){
+    const k=key(q);
+    if(map.has(k)){
+      // 已存在：合并字段，取信息更全的
+      const old=map.get(k);
+      // wrong_count 取较大值
+      if((q.wrong_count||0)>(old.wrong_count||0))old.wrong_count=q.wrong_count;
+      // consecutive_correct 取较大值
+      if((q.consecutive_correct||0)>(old.consecutive_correct||0))old.consecutive_correct=q.consecutive_correct;
+      // mastered 取 true
+      if(q.mastered)old.mastered=1;
+      // last_wrong_date 取较新
+      if(q.last_wrong_date&&(!old.last_wrong_date||q.last_wrong_date>old.last_wrong_date))old.last_wrong_date=q.last_wrong_date;
+      // last_practice_date 取较新
+      if(q.last_practice_date&&(!old.last_practice_date||q.last_practice_date>old.last_practice_date))old.last_practice_date=q.last_practice_date;
+      // image_data 取非空的
+      if(q.image_data&&!old.image_data)old.image_data=q.image_data;
+      // note 取非空的
+      if(q.note&&!old.note)old.note=q.note;
+      // 其他字段：如果旧值为空，用新值填充
+      for(const f of ['error_type','knowledge_tags','difficulty','question_type','source']){
+        if(!old[f]&&q[f])old[f]=q[f];
+      }
+    }else{
+      map.set(k,{...q});
+    }
+  }
+  // 重新分配 ID（确保 ID 唯一且连续）
+  const result=[...map.values()];
+  let maxId=0;
+  for(const q of result){
+    if(!q.id||q.id>maxId)maxId=q.id;
+  }
+  const usedIds=new Set(result.map(q=>q.id).filter(Boolean));
+  let nextId=maxId+1;
+  for(const q of result){
+    if(!q.id){q.id=nextId++}
+    while(usedIds.has(nextId))nextId++;
+  }
+  return result;
+}
+
+// 手动去重
+async function doDeduplicate(){
+  if(!localDB||!localDB.questions){toast('数据库未就绪','err');return}
+  const before=localDB.questions.length;
+  saveSnapshot(localDB,'before_dedup');
+  localDB.questions=dedupeQuestions(localDB.questions);
+  const after=localDB.questions.length;
+  saveLocalDB({force:true});
+  toast(`去重完成：${before} → ${after} 题（删除 ${before-after} 道重复）`,'ok');
+  await Promise.all([refreshStats(),loadSettings()]);
+  if(typeof loadBank==='function')loadBank();
 }
 
 function updateSyncStatus(state,info){
