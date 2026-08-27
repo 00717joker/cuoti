@@ -1820,8 +1820,8 @@ async function ghPutFile(user,repo,branch,path,content,token,msg){
 
 // 把当前 localDB 推到 GitHub
 async function syncDBToGitHub(){
-  if(!ghDbConfigured())return {ok:false,reason:'未配置Token'};
-  if(_dbSyncing)return {ok:false,reason:'正在同步中'};
+  if(!ghDbConfigured())return {ok:false,reason:'未配置Token',error:'未配置GitHub Token，请先在图片设置中填写'};
+  if(_dbSyncing)return {ok:false,reason:'正在同步中',error:'上一次同步还在进行中'};
   _dbSyncing=true;
   updateSyncStatus('syncing');
   try{
@@ -1829,6 +1829,15 @@ async function syncDBToGitHub(){
     const branch=c.branch||'gh-pages';
     const payload=serializeDBForSync();
     const jsonStr=JSON.stringify(payload,null,2);
+    // 检查文件大小（GitHub Contents API 限制 1MB）
+    const sizeKb=Math.round(jsonStr.length/1024);
+    console.log(`[DB Sync] 准备推送：${payload.questions.length} 题，${sizeKb} KB`);
+    if(sizeKb>1024){
+      const msg=`数据太大（${sizeKb}KB > 1MB），请先去重或清理内嵌图片`;
+      toast(msg,'err');
+      updateSyncStatus('error',msg);
+      return {ok:false,error:msg};
+    }
     const sha=await ghPutFile(c.user,c.repo,branch,GH_DB_PATH,jsonStr,c.token,`sync DB @ ${nowStr()} (q:${payload.questions.length})`);
     _lastSyncSHA=sha;
     _lastSyncAt=Date.now();
@@ -1836,9 +1845,17 @@ async function syncDBToGitHub(){
     updateSyncStatus('ok',payload.questions.length);
     return {ok:true,sha,qcount:payload.questions.length};
   }catch(e){
-    console.error('[DB Sync] 推送失败:',e);
-    updateSyncStatus('error',e.message);
-    return {ok:false,error:e.message};
+    const msg=e.message||String(e);
+    console.error('[DB Sync] 推送失败:',msg);
+    // 提供更友好的错误信息
+    let friendly=msg;
+    if(msg.includes('401'))friendly='Token无效或已过期，请重新生成';
+    else if(msg.includes('403'))friendly='Token权限不足（需要repo权限）或仓库不存在';
+    else if(msg.includes('404'))friendly=`仓库或分支不存在：${getGhCfg().user}/${getGhCfg().repo}:${getGhCfg().branch||'gh-pages'}`;
+    else if(msg.includes('422'))friendly='文件过大或格式错误（GitHub API限制1MB）';
+    else if(msg.includes('Failed to fetch'))friendly='网络请求失败，可能是CORS或网络问题';
+    updateSyncStatus('error',friendly);
+    return {ok:false,error:friendly,raw:msg};
   }finally{
     _dbSyncing=false;
   }
@@ -1940,7 +1957,8 @@ async function fullSyncDB(){
     await Promise.all([refreshStats(),loadSettings()]);
     if(typeof loadBank==='function')loadBank();
   }else{
-    toast('同步失败：'+(r.error||'未知错误'),'err');
+    toast('同步失败：'+(r.error||r.reason||'未知错误'),'err');
+    console.log('[DB Sync] 详细错误:',r);
   }
   return r;
 }
