@@ -1,7 +1,7 @@
 {
   "version": "v3",
-  "synced_at": "2026-08-28T15:20:30.855Z",
-  "device": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/15",
+  "synced_at": "2026-08-28T15:23:39.801Z",
+  "device": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko)",
   "questions": [
     {
       "id": 2,
@@ -6443,7 +6443,7 @@
       "knowledge_tags": "",
       "difficulty": "medium",
       "question_type": "fill",
-      "image_data": "idb:q4yzam6444"
+      "image_data": null
     },
     {
       "id": 343,
@@ -6463,7 +6463,7 @@
       "knowledge_tags": "",
       "difficulty": "easy",
       "question_type": "choice",
-      "image_data": "idb:unzk1ogbl7"
+      "image_data": null
     },
     {
       "id": 344,
@@ -6483,7 +6483,7 @@
       "knowledge_tags": "",
       "difficulty": "medium",
       "question_type": "fill",
-      "image_data": "idb:1ij3lly2o9n"
+      "image_data": null
     },
     {
       "id": 345,
@@ -6503,7 +6503,7 @@
       "knowledge_tags": "",
       "difficulty": "easy",
       "question_type": "choice",
-      "image_data": "idb:1q6suetbyqe"
+      "image_data": null
     },
     {
       "id": 346,
@@ -6523,7 +6523,7 @@
       "knowledge_tags": "",
       "difficulty": "medium",
       "question_type": "fill",
-      "image_data": "idb:9nvqud2ytz"
+      "image_data": null
     },
     {
       "id": 347,
@@ -6543,7 +6543,7 @@
       "knowledge_tags": "",
       "difficulty": "medium",
       "question_type": "fill",
-      "image_data": "idb:1o2vljnca5x"
+      "image_data": null
     },
     {
       "id": 348,
@@ -6563,7 +6563,7 @@
       "knowledge_tags": "",
       "difficulty": "medium",
       "question_type": "fill",
-      "image_data": "idb:13cfcwjjhwo"
+      "image_data": null
     },
     {
       "id": 349,
@@ -6583,7 +6583,7 @@
       "knowledge_tags": "",
       "difficulty": "",
       "question_type": "",
-      "image_data": "idb:y5cb9k5lyt"
+      "image_data": null
     },
     {
       "id": 350,
@@ -6603,7 +6603,7 @@
       "knowledge_tags": "",
       "difficulty": "",
       "question_type": "",
-      "image_data": "idb:1eo80rjcz5y"
+      "image_data": null
     },
     {
       "id": 351,
@@ -6623,7 +6623,7 @@
       "knowledge_tags": "",
       "difficulty": "",
       "question_type": "",
-      "image_data": "idb:cbksla365q"
+      "image_data": null
     },
     {
       "id": 352,
@@ -6643,7 +6643,7 @@
       "knowledge_tags": "",
       "difficulty": "",
       "question_type": "",
-      "image_data": "idb:94irdrkrvu"
+      "image_data": null
     },
     {
       "id": 353,
@@ -6663,7 +6663,7 @@
       "knowledge_tags": "",
       "difficulty": "",
       "question_type": "",
-      "image_data": "idb:kbx7501l98"
+      "image_data": null
     },
     {
       "id": 354,
@@ -6683,7 +6683,7 @@
       "knowledge_tags": "",
       "difficulty": "",
       "question_type": "",
-      "image_data": "idb:1f085qi18u0"
+      "image_data": null
     },
     {
       "id": 355,
@@ -6703,7 +6703,7 @@
       "knowledge_tags": "",
       "difficulty": "",
       "question_type": "",
-      "image_data": "idb:ox1ff09swm"
+      "image_data": null
     },
     {
       "id": 356,
