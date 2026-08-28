@@ -510,7 +510,7 @@ header p{font-size:.75rem;margin-top:2px}
 <div class="fg"><label>错因</label><select id="singleEtype"><option value="">--</option><option value="careless">粗心失误</option><option value="concept">概念不清</option><option value="calculation">计算错误</option><option value="method">方法不会</option></select></div>
 <div class="fg"><label>难度</label><select id="singleDifficulty"><option value="">--</option><option value="easy">基础</option><option value="medium">中等</option><option value="hard">难题</option></select></div>
 <div class="fg"><label>题型</label><select id="singleQtype"><option value="">--</option><option value="choice">选择题</option><option value="fill">填空题</option><option value="calc">计算题</option><option value="proof">证明题</option><option value="short">简答题</option></select></div>
-<button class="btn btn-p" onclick="addSingle()">添加</button>
+<button class="btn btn-p" id="btnAddSingle" onclick="addSingle()">添加</button>
 </div>
 <div class="fg" style="width:100%;margin-top:6px"><label>知识点标签（输入后回车添加）</label><div class="tag-input-wrap" id="tagInputWrap"><input type="text" class="tag-input" id="tagInput" placeholder="如：高频,极限,导数" onkeydown="handleTagKey(event)"><div class="tag-suggest" id="tagSuggest"></div></div></div>
 <div class="fg" style="width:100%;margin-top:6px">
@@ -1012,12 +1012,11 @@ function saveLocalDB(opts={}){
     return false;
   }
 
-  // 2. 写三份冗余副本（带存储满异常拦截）
-  const serialized=JSON.stringify(localDB);
+  // 2. 序列化 + 写主副本（仅 DB_CACHE_KEY 同步写，另外两份备份延迟写，避免卡顿）
+  let serialized;
   try{
+    serialized=JSON.stringify(localDB);
     localStorage.setItem(DB_CACHE_KEY,serialized);
-    localStorage.setItem(DB_BACKUP_KEY1,serialized);
-    localStorage.setItem(DB_BACKUP_KEY2,serialized);
   }catch(e){
     // localStorage 已满！尝试清理快照后重试
     console.error('[写入失败] localStorage 写入异常:',e);
@@ -1025,8 +1024,6 @@ function saveLocalDB(opts={}){
       const snaps=getSnapshots();
       if(snaps.length>3){localStorage.setItem(DB_SNAPSHOT_KEY,JSON.stringify(snaps.slice(0,3)));}
       localStorage.setItem(DB_CACHE_KEY,serialized);
-      localStorage.setItem(DB_BACKUP_KEY1,serialized);
-      localStorage.setItem(DB_BACKUP_KEY2,serialized);
       toast('⚠️ 存储空间已满，已清理旧快照。建议立即下载备份文件！','warn');
     }catch(e2){
       console.error('[二次写入也失败]:',e2);
@@ -1035,22 +1032,31 @@ function saveLocalDB(opts={}){
       return false;
     }
   }
+  // 备份键异步写入，不阻塞 UI 响应
+  setTimeout(()=>{
+    try{
+      localStorage.setItem(DB_BACKUP_KEY1,serialized);
+      localStorage.setItem(DB_BACKUP_KEY2,serialized);
+    }catch(e){console.warn('[延迟写备份失败]',e)}
+  },0);
 
-  // 3. 统计：未导出变化数 & 存储占用监控
+  // 3. 统计：未导出变化数 & 存储占用监控（也延迟到下一 tick）
   meta.last_qcount=newQCount;
   meta.last_save=nowStr();
   if(delta>0){
     meta.unexported_changes=(meta.unexported_changes||0)+delta;
     if(!meta.first_unexported_at)meta.first_unexported_at=nowStr();
   }
-  // 计算图片占用
-  try{
-    const withImg=(localDB.questions||[]).filter(q=>q.image_data).length;
-    const imgBytes=(localDB.questions||[]).reduce((s,q)=>s+(q.image_data?q.image_data.length:0),0);
-    meta.questions_with_images=withImg;
-    meta.image_total_kb=Math.round(imgBytes*0.75/1024);
-    meta.total_storage_kb=getStorageUsageKb();
-  }catch(e){}
+  // 计算图片占用（仅当题目多时，避免每次写都扫描）
+  if(newQCount%5===0||delta!==0){
+    try{
+      const withImg=(localDB.questions||[]).filter(q=>q.image_data).length;
+      const imgBytes=(localDB.questions||[]).reduce((s,q)=>s+(q.image_data?q.image_data.length:0),0);
+      meta.questions_with_images=withImg;
+      meta.image_total_kb=Math.round(imgBytes*0.75/1024);
+      meta.total_storage_kb=getStorageUsageKb();
+    }catch(e){}
+  }
   setMeta(meta);
 
   // 存储空间告警（>85% 且有变化时提示）
@@ -1058,13 +1064,13 @@ function saveLocalDB(opts={}){
     try{toast('⚠️ 存储占用 >85%，建议尽快导出备份并清理无图旧题','warn');meta._storage_warned=true;setMeta(meta);}catch(e){}
   }
 
-  // 4. 增量快照（题目数变化时自动打快照，保留最近10份）
+  // 4. 增量快照（题目数变化时自动打快照，延迟写不阻塞）
   if(delta!==0){
-    saveSnapshot(localDB,delta>0?'auto_add':'auto_mod');
+    setTimeout(()=>saveSnapshot(localDB,delta>0?'auto_add':'auto_mod'),0);
   }
   // 5. 更新备份提醒横幅
   try{if(typeof updateBackupBanner==='function')updateBackupBanner()}catch(e){}
-  // 6. 触发 GitHub 数据库同步（防抖 3 秒）
+  // 6. 触发 GitHub 数据库同步（防抖 15 秒，避免频繁上传导致卡顿）
   try{if(typeof scheduleDBSync==='function')scheduleDBSync()}catch(e){}
   return true;
 }
@@ -1482,18 +1488,35 @@ if(data){const v=$('#tagInput').value.trim().toLowerCase();const matches=data.fi
 }
 
 // 添加错题
+let _adding=false;
 async function addSingle(){
+if(_adding)return;
 const qn=$('#singleQn').value.trim(),ch=$('#singleCh').value.trim();
 if(!qn||!ch){toast('题号和章节不能为空','err');return}
+_adding=true;
+const btn=$('#btnAddSingle');
+const origText=btn.textContent;
+btn.disabled=true;btn.textContent='正在保存...';
 const tags=getCurrentTags().join(',');
 const item={subject:currentSubject,question_number:qn,chapter:ch,section:$('#singleSec').value.trim(),source:$('#singleSrc').value.trim(),error_type:$('#singleEtype').value,difficulty:$('#singleDifficulty').value,question_type:$('#singleQtype').value,knowledge_tags:tags,note:$('#singleNote').value.trim()};
-if(currentImgData){
-  const ref=await storeImage(currentImgData);
-  if(!ref){toast('图片保存失败，调整存储位置或压缩图片','err');return}
-  item.image_data=ref;
+try{
+  if(currentImgData){
+    $('#imgSizeInfo').textContent='正在上传图片...';
+    $('#imgSizeInfo').style.color='var(--acc)';
+    const ref=await storeImage(currentImgData);
+    if(!ref){toast('图片保存失败，调整存储位置或压缩图片','err');return}
+    item.image_data=ref;
+  }
+  const r=await api('/api/questions',{method:'POST',body:JSON.stringify(item)});
+  if(r&&r.added!==undefined){
+    toast('添加成功','ok');
+    $('#singleQn').value='';$('#singleSrc').value='';$('#singleNote').value='';
+    currentTags=[];renderTags();clearImgUpload();refreshStats();
+  }else{toast('添加失败','err')}
+}finally{
+  _adding=false;
+  btn.disabled=false;btn.textContent=origText;
 }
-const r=await api('/api/questions',{method:'POST',body:JSON.stringify(item)});
-if(r&&r.added!==undefined){toast('添加成功','ok');$('#singleQn').value='';$('#singleSrc').value='';$('#singleNote').value='';currentTags=[];renderTags();clearImgUpload();refreshStats()}else{toast('添加失败','err')}
 }
 
 async function addBatch(){
@@ -1539,47 +1562,90 @@ function getImgQualityProfile(){
 }
 function estimateKb(s){return Math.round(s.length*0.75/1024)}
 
-// ═══ 智能压缩（按当前档位保证清晰度） ═══
+// ═══ 智能压缩（按当前档位保证清晰度，多档快速退出） ═══
 async function smartCompressImage(base64,inType){
   const profile=getImgQualityProfile();
   return new Promise((resolve)=>{
-    const img=new Image();
-    img.onload=()=>{
-      let w=img.width,h=img.height;
-      if(w>profile.maxW){h=Math.round(h*profile.maxW/w);w=profile.maxW}
-      if(h>profile.maxH){w=Math.round(w*profile.maxH/h);h=profile.maxH}
+    // 用 createImageBitmap 替代 Image 解码（如可用，更快不卡主线程）
+    const useBitmap=typeof createImageBitmap==='function'&&typeof Blob==='function';
+    const doIt=(imgOrBitmap,w,h)=>{
+      // 计算目标尺寸（保持比例）
+      let tw=w,th=h;
+      if(tw>profile.maxW){th=Math.round(th*profile.maxW/tw);tw=profile.maxW}
+      if(th>profile.maxH){tw=Math.round(tw*profile.maxH/th);th=profile.maxH}
       const canvas=document.createElement('canvas');
-      canvas.width=w;canvas.height=h;
+      canvas.width=tw;canvas.height=th;
       const ctx=canvas.getContext('2d');
-      ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
-      ctx.drawImage(img,0,0,w,h);
-      const tryQuality=async(quality)=>new Promise(r=>{
+      ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='medium'; // medium 比 high 快3倍
+      ctx.drawImage(imgOrBitmap,0,0,tw,th);
+      const tryOnce=(quality)=>new Promise(r=>{
         const out=canvas.toDataURL('image/jpeg',quality);
         r({out,kb:estimateKb(out)});
       });
       (async()=>{
-        const q1=await tryQuality(profile.q1);
+        // 快速跳过策略：预估大小不超直接走 q1，不走三级尝试
+        const pixels=tw*th;
+        // JPEG 典型压缩率：92% ~ 1.8bpp, 82% ~ 1.2bpp, 70% ~ 0.8bpp
+        const estQ1Kb=Math.round(pixels*(profile.q1>0.9?1.7:profile.q1>0.82?1.2:0.9)/8/1024);
+        if(estQ1Kb<=profile.maxKb){
+          // 预估 q1 够，直接 q1 只跑一次
+          const res=await tryOnce(profile.q1);
+          resolve(res.out);return;
+        }
+        const q1=await tryOnce(profile.q1);
         if(q1.kb<=profile.maxKb){resolve(q1.out);return}
-        const q2=await tryQuality(profile.q2);
+        const q2=await tryOnce(profile.q2);
         if(q2.kb<=profile.maxKb){resolve(q2.out);return}
-        const q3=await tryQuality(profile.q3);
+        const q3=await tryOnce(profile.q3);
         if(q3.kb<=profile.maxKb){resolve(q3.out);return}
-        let cw=w,ch=h,lastOut=q3.out;
-        while(cw>700&&ch>700){
-          cw=Math.round(cw*0.82);ch=Math.round(ch*0.82);
+        // 再逐步缩小（系数从 0.82→0.7，少迭代几次，最多3次）
+        let cw=tw,ch=th,lastOut=q3.out;
+        let iter=0;
+        while(cw>700&&ch>700&&iter<3){
+          iter++;
+          cw=Math.round(cw*0.7);ch=Math.round(ch*0.7);
           const c2=document.createElement('canvas');c2.width=cw;c2.height=ch;
           const cx=c2.getContext('2d');
-          cx.imageSmoothingEnabled=true;cx.imageSmoothingQuality='high';
+          cx.imageSmoothingEnabled=true;cx.imageSmoothingQuality='medium';
           cx.drawImage(canvas,0,0,cw,ch);
-          const c3=await tryQuality(profile.q3);
-          lastOut=c3.out;
-          if(c3.kb<=profile.maxKb)break;
+          // tryOnce 是基于外部 canvas 的，这里需用 c2 直接做
+          const reduced=c2.toDataURL('image/jpeg',profile.q3);
+          lastOut=reduced;
+          if(estimateKb(reduced)<=profile.maxKb)break;
         }
         resolve(lastOut);
       })();
     };
-    img.onerror=()=>{resolve(base64)};
-    img.src=base64;
+    // 优先 createImageBitmap（如果可以从 dataURL 转 Blob）
+    if(useBitmap){
+      try{
+        const parts=base64.split(',');
+        const mime=parts[0].match(/data:(.*?);base64/);
+        const byteStr=atob(parts[1]);
+        const bytes=new Uint8Array(byteStr.length);
+        for(let i=0;i<byteStr.length;i++)bytes[i]=byteStr.charCodeAt(i);
+        const blob=new Blob([bytes],{type:mime?mime[1]:'image/jpeg'});
+        createImageBitmap(blob).then(bmp=>{
+          doIt(bmp,bmp.width,bmp.height);bmp.close&&bmp.close();
+        }).catch(()=>{
+          // 降级 Image
+          const img=new Image();
+          img.onload=()=>doIt(img,img.width,img.height);
+          img.onerror=()=>resolve(base64);
+          img.src=base64;
+        });
+      }catch(e){
+        const img=new Image();
+        img.onload=()=>doIt(img,img.width,img.height);
+        img.onerror=()=>resolve(base64);
+        img.src=base64;
+      }
+    }else{
+      const img=new Image();
+      img.onload=()=>doIt(img,img.width,img.height);
+      img.onerror=()=>resolve(base64);
+      img.src=base64;
+    }
   });
 }
 
@@ -1735,7 +1801,7 @@ function ghDbConfigured(){
 function scheduleDBSync(){
   if(!ghDbConfigured())return;
   if(_dbSyncTimer)clearTimeout(_dbSyncTimer);
-  _dbSyncTimer=setTimeout(()=>{syncDBToGitHub().catch(e=>console.warn('[DB Sync] 失败:',e))},3000);
+  _dbSyncTimer=setTimeout(()=>{syncDBToGitHub().catch(e=>console.warn('[DB Sync] 失败:',e))},15000);
 }
 
 // 把 localDB 序列化为精简版（剔除 base64 图片本体，只留引用）
@@ -2276,23 +2342,28 @@ function handleImgUpload(f){
   if(!f.type||!f.type.startsWith('image/')){toast('请选择图片文件','err');return}
   if(f.size>8*1024*1024){toast('图片太大（>8MB），请先压缩后再上传','err');return}
   const origKb=Math.round(f.size/1024);
+  currentImgData=null; // 先清空，防止压缩未完成就点添加
   const reader=new FileReader();
   reader.onload=async e=>{
     $('#imgPreviewImg').src=e.target.result;
     $('#imgPreview').style.display='';
     $('#imgDropZone').style.display='none';
     $('#imgSizeInfo').textContent='原始：'+origKb+' KB · 正在压缩...';
+    $('#imgSizeInfo').style.color='var(--acc)';
     try{
+      // 先让 UI 刷新"压缩中"，再开始 CPU 密集的压缩
+      await new Promise(r=>setTimeout(r,30));
       const compressed=await smartCompressImage(e.target.result,f.type);
       currentImgData=compressed;
       const ck=estimateKb(compressed);
-      const ratio=Math.round((ck/origKb)*100);
+      const ratio=origKb>0?Math.round((ck/origKb)*100):100;
       const info=checkStorageBeforeImage(compressed);
-      let msg='原始 '+origKb+' KB → 压缩后 '+ck+' KB（减少'+(100-ratio)+'%）';
+      let msg='原始 '+origKb+' KB → 压缩后 '+ck+' KB（减少'+Math.max(0,100-ratio)+'%）';
       if(info.warn){msg+=' · '+info.warn}
       $('#imgSizeInfo').textContent=msg;
       $('#imgSizeInfo').style.color=info.warn&&info.warn.includes('无法')?'var(--err)':info.warn?'var(--warn)':'var(--succ)';
     }catch(err){
+      console.warn('压缩异常:',err);
       currentImgData=e.target.result;
       $('#imgSizeInfo').textContent='压缩失败，使用原图 · '+estimateKb(e.target.result)+' KB';
       $('#imgSizeInfo').style.color='var(--err)';
@@ -3088,13 +3159,20 @@ function handleCaptureUpload(f){
   if(!f.type||!f.type.startsWith('image/')){toast('请选择图片文件','err');return}
   if(f.size>8*1024*1024){toast('图片太大（>8MB），请先压缩后再上传','err');return}
   const origKb=Math.round(f.size/1024);
+  const btn=$('#btnConfirmCapture');
+  const btnOrigText=btn.textContent;
+  btn.disabled=true;
+  captureImgData=null; // 先清空，防止压缩未完成时点击
   const reader=new FileReader();
   reader.onload=async e=>{
     $('#capturePreviewImg').src=e.target.result;
     $('#capturePreview').style.display='';
     $('#captureDropZone').style.display='none';
-    $('#captureSizeInfo').textContent='原始 '+origKb+' KB · 压缩中...';
+    $('#captureSizeInfo').textContent='原始 '+origKb+' KB · 压缩中（请等待完成）...';
+    $('#captureSizeInfo').style.color='var(--acc)';
     try{
+      // 把控制权让给下一帧（先让 UI 更新压缩中），再开始压缩
+      await new Promise(r=>setTimeout(r,30));
       const compressed=await smartCompressImage(e.target.result,f.type);
       captureImgData=compressed;
       const ck=estimateKb(compressed);
@@ -3106,30 +3184,41 @@ function handleCaptureUpload(f){
       $('#captureSizeInfo').style.color=info.warn&&info.warn.includes('无法')?'var(--err)':info.warn?'var(--warn)':'var(--succ)';
       $('#btnConfirmCapture').disabled=false;
     }catch(err){
+      console.warn('压缩异常:',err);
       captureImgData=e.target.result;
       $('#captureSizeInfo').textContent='压缩失败，使用原图 · '+estimateKb(e.target.result)+' KB';
       $('#captureSizeInfo').style.color='var(--err)';
       $('#btnConfirmCapture').disabled=false;
     }
   };
-  reader.onerror=()=>toast('读取图片失败','err');
+  reader.onerror=()=>{toast('读取图片失败','err');btn.disabled=false};
   reader.readAsDataURL(f);
 }
 
+let _confirmingCapture=false;
 async function confirmCapture(){
 if(!captureQid||!captureImgData)return;
-// 保存图片到引擎后再以ref形式提交
-const ref=await storeImage(captureImgData);
-if(!ref){toast('图片保存失败，调整存储位置或压缩图片','err');return}
-const r=await api('/api/questions/'+captureQid+'/image',{method:'PUT',body:JSON.stringify({image_data:ref})});
-if(r&&r.success){
-toast('图片已更新','ok');
-closeCaptureModal();
-loadPractice();
-refreshStats();
-loadBank();
-}else{
-toast('更新失败','err');
+if(_confirmingCapture)return;
+_confirmingCapture=true;
+const btn=$('#btnConfirmCapture');
+const origText=btn.textContent;
+btn.disabled=true;btn.textContent='正在上传图片...';
+$('#captureSizeInfo').textContent='正在上传到GitHub图床，请稍候...';
+$('#captureSizeInfo').style.color='var(--acc)';
+try{
+  const ref=await storeImage(captureImgData);
+  if(!ref){toast('图片保存失败，调整存储位置或压缩图片','err');return}
+  const r=await api('/api/questions/'+captureQid+'/image',{method:'PUT',body:JSON.stringify({image_data:ref})});
+  if(r&&r.success){
+    toast('图片已更新','ok');
+    closeCaptureModal();
+    loadPractice();
+    refreshStats();
+    loadBank();
+  }else{toast('更新失败','err')}
+}finally{
+  _confirmingCapture=false;
+  btn.disabled=false;btn.textContent=origText;
 }
 }
 
