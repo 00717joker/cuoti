@@ -3653,10 +3653,12 @@ function initLazyLoad(root){
                 ph.style.cssText='min-width:140px;min-height:100px;padding:10px;border-radius:8px;background:var(--warn-bg, #fff5e0);color:var(--warn, #8a5a00);font-size:.75rem;display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center;cursor:pointer;';
                 ph.title=originalRef;
                 ph.innerHTML=`<b style="font-size:.8rem;">⚠️ 图片加载失败</b><span>可能原因：GitHub Pages 同步延迟 / 文件缺失</span><button type="button" style="margin-top:4px;padding:2px 10px;font-size:.7rem;cursor:pointer;">🔁 点击重试</button><div style="font-size:.6rem;color:var(--t3);word-break:break-all;max-width:300px;">${(originalRef||'').slice(0,140)}</div>`;
-                ph.addEventListener('click',async()=>{
+                ph.addEventListener('click',async(ev)=>{
+                  if(ev&&typeof ev.stopPropagation==='function')ev.stopPropagation();
                   if(ph.dataset.retrying==='1')return;
                   ph.dataset.retrying='1';
-                  ph.querySelector('button')&&(ph.querySelector('button').textContent='重试中…');
+                  const btn=ph.querySelector('button');
+                  if(btn){btn.textContent='重试中…';btn.style.opacity='.7';btn.style.pointerEvents='none'}
                   const newImg=document.createElement('img');
                   newImg.dataset.src=originalRef;
                   if(originalRef.startsWith('gh:'))newImg.dataset.ghRef=originalRef;
