@@ -1,6 +1,6 @@
 {
   "version": "v3",
-  "synced_at": "2026-08-29T15:28:29.362Z",
+  "synced_at": "2026-08-29T15:41:30.835Z",
   "device": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/15",
   "questions": [
     {
@@ -6904,6 +6904,46 @@
       "difficulty": "",
       "question_type": "",
       "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260829_19q670g6yw.jpg"
+    },
+    {
+      "id": 365,
+      "question_number": "1",
+      "subject": "math",
+      "chapter": "U18",
+      "section": "模拟卷",
+      "source": "",
+      "note": "",
+      "wrong_count": 1,
+      "consecutive_correct": 0,
+      "mastered": 0,
+      "date_added": "2026-08-29",
+      "last_wrong_date": "2026-08-29",
+      "last_practice_date": null,
+      "error_type": "",
+      "knowledge_tags": "",
+      "difficulty": "",
+      "question_type": "",
+      "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260829_q6a87bcp7k.jpg"
+    },
+    {
+      "id": 366,
+      "question_number": "29",
+      "subject": "math",
+      "chapter": "U16",
+      "section": "真题",
+      "source": "",
+      "note": "",
+      "wrong_count": 1,
+      "consecutive_correct": 0,
+      "mastered": 0,
+      "date_added": "2026-08-29",
+      "last_wrong_date": "2026-08-29",
+      "last_practice_date": null,
+      "error_type": "",
+      "knowledge_tags": "",
+      "difficulty": "",
+      "question_type": "",
+      "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260829_1er0vc8jh09.jpg"
     }
   ],
   "practice_results": [
