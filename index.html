@@ -853,9 +853,9 @@ header p{font-size:.75rem;margin-top:2px}
 如果发现"同步按钮点了没反应 / 图片 404 / 没有出现上面的一键修复按钮"，说明你访问的 <b>GitHub Pages 版本落后</b>（gh-pages 上的 index.html 被误写过）。点下方按钮即可从官方仓库拉取最新修复版源码并 <b>用你已保存的 GitHub Token 直接覆盖 gh-pages + main</b>，无需手动粘贴 Token / 命令行。
 </p>
 <div style="display:flex;gap:6px;flex-wrap:wrap">
-<button class="btn btn-d btn-sm" style="flex:1" onclick="selfDeployLatest('both')">⚡ 立即部署修复版 (gh-pages + main)</button>
-<button class="btn btn-o btn-sm" onclick="selfDeployLatest('pages')">只部署 gh-pages</button>
-<button class="btn btn-o btn-sm" onclick="selfDeployLatest('main')">只部署 main</button>
+<button class="btn btn-d btn-sm" style="flex:1" onclick="(function(){try{selfDeployLatest('both').catch(e=>{console.error(e);toast('部署异常：'+e.message,'err');})}catch(e){console.error(e);toast('部署按钮异常：请打开F12控制台查看','err')}})()">⚡ 立即部署修复版 (gh-pages + main)</button>
+<button class="btn btn-o btn-sm" onclick="(function(){try{selfDeployLatest('pages').catch(e=>console.error(e)}catch(e){}})()">只部署 gh-pages</button>
+<button class="btn btn-o btn-sm" onclick="(function(){try{selfDeployLatest('main').catch(e=>console.error(e)}catch(e){}})()">只部署 main</button>
 </div>
 <pre id="selfDeployLog" style="margin-top:8px;max-height:220px;overflow:auto;background:#0b1020;color:#e2e8f0;border-radius:8px;padding:10px;font-size:.7rem;line-height:1.6;white-space:pre-wrap;display:none"></pre>
 </div>
@@ -2410,9 +2410,21 @@ function updateSyncStatus(state,info){
   }else if(state==='ok'){
     el.style.color='var(--succ)';
     el.innerHTML=`✅ 已同步 GitHub · ${info||0} 题 · <span style="font-size:.65rem">${new Date().toLocaleTimeString()}</span>`;
+  }else if(state==='img-warn'){
+    // 图床完整性校验不通过，但 DB 同步本身是成功的，用黄色警告，避免用户误解为"同步失败"
+    const m=String(info||'');
+    el.style.color='var(--warn)';
+    el.innerHTML='⚠️ 图床：'+m.replace(/^.*❌\s*/,'').replace(/^错误：|同步失败：/,'');
   }else if(state==='error'){
-    el.style.color='var(--err)';
-    el.innerHTML='❌ 同步失败：'+(info||'').slice(0,80);
+    const m=String(info||'');
+    // 把"图床修复结果"当作警告，不显示成❌同步失败（避免用户以为题库DB没同步）
+    if(/张图\s*[·,]/.test(m)||/缺失/.test(m)||/图床/.test(m)){
+      el.style.color='var(--warn)';
+      el.innerHTML='⚠️ 图床：'+m.replace(/^(同步失败[：:]\s*)+/,'');
+    }else{
+      el.style.color='var(--err)';
+      el.innerHTML='❌ 同步失败：'+m.slice(0,80);
+    }
   }else{
     const meta=getMeta();
     if(meta.last_gh_sync){
