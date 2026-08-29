@@ -1,6 +1,6 @@
 {
   "version": "v3",
-  "synced_at": "2026-08-29T23:04:30.464Z",
+  "synced_at": "2026-08-29T23:05:49.110Z",
   "device": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/15",
   "questions": [
     {
@@ -6933,7 +6933,7 @@
       "section": "真题",
       "source": "",
       "note": "",
-      "wrong_count": 2,
+      "wrong_count": 1,
       "consecutive_correct": 0,
       "mastered": 0,
       "date_added": "2026-08-29",
