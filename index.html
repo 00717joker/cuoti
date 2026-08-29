@@ -846,6 +846,20 @@ header p{font-size:.75rem;margin-top:2px}
 <p style="font-size:.65rem;color:var(--t3);margin-top:2px">如果同步后题数翻倍，点此去重。以"学科+章节+题号+小节"为唯一键，保留信息最全的。</p>
 <button class="btn btn-warn btn-sm" style="margin-top:8px;width:100%" onclick="repairMissingGhImages({silent:false})">🛠️ 一键修复 GitHub 图床缺失图片</button>
 <p style="font-size:.65rem;color:var(--t3);margin-top:2px">检测所有 gh: 链接的图片是否真的存在于仓库，缺失时若本机 IDB 有原始 blob 会自动补传。建议在"最早上传这些图的手机/电脑"上点此按钮效果最佳。</p>
+
+<div style="margin-top:10px;border:1.5px dashed #f59e0b;border-radius:10px;padding:10px;background:#fffaf0">
+<h3 style="font-size:.8rem;color:#92400e;margin:0 0 6px">🚨 当前版本紧急修复通道（v3.9.0 在线升级）</h3>
+<p style="font-size:.65rem;color:#78350f;margin:0 0 8px">
+如果发现"同步按钮点了没反应 / 图片 404 / 没有出现上面的一键修复按钮"，说明你访问的 <b>GitHub Pages 版本落后</b>（gh-pages 上的 index.html 被误写过）。点下方按钮即可从官方仓库拉取最新修复版源码并 <b>用你已保存的 GitHub Token 直接覆盖 gh-pages + main</b>，无需手动粘贴 Token / 命令行。
+</p>
+<div style="display:flex;gap:6px;flex-wrap:wrap">
+<button class="btn btn-d btn-sm" style="flex:1" onclick="selfDeployLatest('both')">⚡ 立即部署修复版 (gh-pages + main)</button>
+<button class="btn btn-o btn-sm" onclick="selfDeployLatest('pages')">只部署 gh-pages</button>
+<button class="btn btn-o btn-sm" onclick="selfDeployLatest('main')">只部署 main</button>
+</div>
+<pre id="selfDeployLog" style="margin-top:8px;max-height:220px;overflow:auto;background:#0b1020;color:#e2e8f0;border-radius:8px;padding:10px;font-size:.7rem;line-height:1.6;white-space:pre-wrap;display:none"></pre>
+</div>
+
 <label style="display:flex;align-items:center;gap:6px;font-size:.7rem;color:var(--t2);margin-top:6px;cursor:pointer">
 <input type="checkbox" id="setAutoSync" onchange="toggleAutoSync(this.checked)" style="cursor:pointer">
 启动时自动拉取最新数据（推荐）
@@ -2267,6 +2281,117 @@ async function repairMissingGhImages({silent=false}={}){
   return summary;
 }
 window.repairMissingGhImages=repairMissingGhImages; // 手动控制台可调用
+
+// ═══ 在线自部署：用浏览器 localStorage 里的 gh_cfg Token，把修复版源码推到 GitHub ═══
+// 解决"gh-pages 被误写成 test 文件、用户找不到 Token 手动部署"的问题
+// 策略：
+//   1. 先从本地 main 分支的 netlify/index.html 拉最新源码（优先 3 个源：Pages raw / jsdelivr / 同源 dev server）
+//   2. 做目标特征校验：必须包含 repairMissingGhImages + 「🛠️ 一键修复」两个锚点
+//   3. 用 Contents API PUT 分别写入：
+//        target='pages' → gh-pages:index.html
+//        target='main'  → main:netlify/index.html
+//        target='both'  → 两个都写
+//   4. 全部完成后：toast + 建议用户 1 分钟后 Ctrl+Shift+R 强刷
+async function selfDeployLatest(target='both'){
+  const c=getGhCfg();
+  const logEl=$('#selfDeployLog');
+  if(logEl){logEl.style.display='block';logEl.textContent='';}
+  const slog=(m,cls='')=>{
+    const line=`[${new Date().toLocaleTimeString()}] ${m}`;
+    console.log('[SelfDeploy]',m);
+    if(logEl){
+      let s=line;
+      if(cls==='ok')s='<span style="color:#86efac">'+s+'</span>';
+      if(cls==='err')s='<span style="color:#fda4af">'+s+'</span>';
+      if(cls==='warn')s='<span style="color:#fde68a">'+s+'</span>';
+      logEl.innerHTML+=s+'\n';logEl.scrollTop=logEl.scrollHeight;
+    }
+    if(cls==='ok')toast(m,'ok');else if(cls==='err')toast(m,'err');else if(cls==='warn')toast(m,'err');
+  };
+  if(!c.user||!c.repo||!c.token){slog('❌ 缺少 gh_cfg 配置（user/repo/token），请先到上方「🔀 图片存储引擎」里点「测试连接」保存 Token','err');return}
+  // Token 预检
+  slog('1/6 验证 Token…');
+  const tk=await verifyGhToken(c);
+  if(!tk.ok){slog('❌ '+tk.detail,'err');return}
+  slog('✅ Token 属主可访问','ok');
+
+  // 拉源码（多个候选源依次尝试，直到拿到含修复特征的 200KB+ 版本）
+  slog('2/6 拉取修复版 index.html 源码…');
+  const user=c.user, repo=c.repo;
+  const sources=[
+    // 候选1: jsdelivr @ main 分支（如果 main 已有，直接走 CDN，避免 Contents API 限流）
+    `https://cdn.jsdelivr.net/gh/${user}/${repo}@main/netlify/index.html`,
+    // 候选2: raw.githubusercontent main:netlify/index.html
+    `https://raw.githubusercontent.com/${user}/${repo}/main/netlify/index.html`,
+    // 候选3: Contents API main:netlify/index.html
+    null, // 将单独构造（需要 token，拿到 download_url 再跳）
+    // 候选4: 本地同源 dev server /netlify/index.html
+    `${location.origin}${location.pathname.replace(/[^/]*$/,'')}netlify/index.html`,
+  ];
+  let content=null, src='none';
+  for(let i=0;i<sources.length;i++){
+    const u=sources[i];
+    try{
+      let txt;
+      if(u===null){
+        // Contents API 方式：先取 download_url
+        const r=await fetch(`https://api.github.com/repos/${user}/${repo}/contents/netlify/index.html?ref=main`,{headers:{'Authorization':`token ${c.token}`,'Accept':'application/vnd.github+json'}});
+        if(!r.ok)continue;
+        const j=await r.json();
+        const du=j.download_url;
+        if(!du)continue;
+        const r2=await fetch(du,{cache:'no-cache'});if(!r2.ok)continue;
+        txt=await r2.text();
+      }else{
+        const r=await fetch(u,{cache:'no-cache'});if(!r.ok)continue;
+        txt=await r.text();
+      }
+      if(txt && txt.length>150000 && txt.includes('repairMissingGhImages') && txt.includes('🛠️ 一键修复')){
+        content=txt; src=sources[i]?'候选'+(i+1)+':'+sources[i].slice(0,70):'候选3:ContentsAPI';
+        slog(`✅ 已从 ${src} 获取（${(txt.length/1024).toFixed(1)} KB，特征校验通过）`,'ok');
+        break;
+      }else{
+        slog(`  候选${i+1}: 长度=${txt?.length||'-'}，不匹配修复特征，跳过…`,'warn');
+      }
+    }catch(e){slog(`  候选${i+1}: 网络错误 ${e.message}`,'warn')}
+  }
+  if(!content){slog('❌ 所有候选源都拿不到修复版源码。请确认 main 分支已经 push 了最新 netlify/index.html。','err');return}
+
+  // 部署函数：PUT 某分支某路径
+  const doPut=async (branch, path, msg)=>{
+    slog(`  → PUT ${branch}:${path} …`);
+    const sha=await ghGetFileSHA(user,repo,branch,path,c.token);
+    const b64=btoa(unescape(encodeURIComponent(content)));
+    if(b64.length>100*1024*1024){slog('  ❌ 文件过大（>100MB）','err');return false}
+    const body={message:msg,content:b64,branch};if(sha)body.sha=sha;
+    const r=await fetch(`https://api.github.com/repos/${user}/${repo}/contents/${path}`,{method:'PUT',headers:{'Authorization':`token ${c.token}`,'Accept':'application/vnd.github+json','Content-Type':'application/json'},body:JSON.stringify(body)});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok){slog(`  ❌ HTTP ${r.status}：${j.message||''}`,'err');return false}
+    slog(`  ✅ 完成 · commit=${(j.commit?.sha||'').slice(0,10)} · file sha=${(j.content?.sha||'').slice(0,10)}`,'ok');
+    return true; j;
+  };
+  const now=new Date().toISOString().slice(0,16);
+  const msg=`deploy: sync visible errors + repairMissingGhImages + 3-mirror fallback (self-deploy ${now})`;
+  let success=0, total=0;
+  slog('3/6 执行 Contents API PUT 写入…');
+  if(target==='both'||target==='pages'){total++; if(await doPut(c.branch||'gh-pages','index.html',msg))success++}
+  if(target==='both'||target==='main') {total++; if(await doPut('main','netlify/index.html',msg))success++}
+  slog(`4/6 部署完成：${success}/${total} 分支成功`,'ok');
+  if(success===0){slog('❌ 所有分支部署均失败','err');return}
+  slog('5/6 触发站点级刷新（建议 60s 后手动 Ctrl+Shift+R 强刷）…','warn');
+  // 尝试立即把 localStorage 缓存里的 _offlineDB 不变，只更新 script 源 —— 实际靠用户手动强刷
+  // 额外执行：如果部署的是 gh-pages 分支，立即在前端执行 repairMissingGhImages（本设备有 IDB blob 即可立即补图）
+  if((target==='both'||target==='pages') && success>0){
+    slog('6/6 立即执行图床缺失图片检测与修复（当前设备 IDB 有 blob 的会自动 PUT 回 GitHub）…');
+    try{
+      const s=await repairMissingGhImages({silent:true});
+      if(s.missing>0)slog(`  ⚠️ 仍缺失 ${s.missing} 张图（本设备 IDB 里找不到原始 blob），建议用"最早拍过这些图的手机/电脑"打开系统再点「🛠️ 一键修复」`,'warn');
+      else slog(`  ✅ 图片完整性 OK（共${s.total}张 / 修复${s.fixed}张）`,'ok');
+    }catch(e){slog('  repairMissingGhImages 执行异常：'+e.message,'warn')}
+  }
+  slog(`🎉 部署全部完成！请 1~3 分钟后（等 GitHub Pages 发布完成）访问站点按 Ctrl+Shift+R 强刷新。`,'ok');
+}
+window.selfDeployLatest=selfDeployLatest;
 
 function updateSyncStatus(state,info){
   const el=$('#syncStatusBadge');
