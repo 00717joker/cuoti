@@ -1,6 +1,6 @@
 {
   "version": "v3",
-  "synced_at": "2026-08-29T23:05:49.110Z",
+  "synced_at": "2026-08-31T08:26:44.470Z",
   "device": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/15",
   "questions": [
     {
@@ -6803,7 +6803,7 @@
       "knowledge_tags": "",
       "difficulty": "",
       "question_type": "",
-      "image_data": null
+      "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260831_1udiv34h9pe.jpg"
     },
     {
       "id": 360,
@@ -7104,6 +7104,26 @@
       "difficulty": "",
       "question_type": "",
       "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260830_1sf5hr41hl5.jpg"
+    },
+    {
+      "id": 375,
+      "question_number": "思维课61",
+      "subject": "math",
+      "chapter": "U16",
+      "section": "真题",
+      "source": "",
+      "note": "",
+      "wrong_count": 1,
+      "consecutive_correct": 0,
+      "mastered": 0,
+      "date_added": "2026-08-30",
+      "last_wrong_date": "2026-08-30",
+      "last_practice_date": null,
+      "error_type": "",
+      "knowledge_tags": "",
+      "difficulty": "",
+      "question_type": "",
+      "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260830_79w4ub32xx.jpg"
     }
   ],
   "practice_results": [
