@@ -1319,7 +1319,7 @@ function handleLocalAPI(u,o={}){
   if(path==='/api/daily-practice/dates'&&method==='GET'){
     return Promise.resolve([]);
   }
-  if(path==='/api/practice/result'&&method==='POST'){
+  if((path==='/api/practice/result'||path==='/api/practice-result')&&method==='POST'){
     const body=JSON.parse(o.body||'{}');
     const q=localDB.questions.find(q=>q.id===body.question_id);
     if(q){q.last_practice_date=todayStr();if(body.result==='correct'){q.consecutive_correct=(q.consecutive_correct||0)+1;if(q.consecutive_correct>=1)q.mastered=1}else{q.consecutive_correct=0;q.mastered=0;q.wrong_count=(q.wrong_count||1)+1;q.last_wrong_date=todayStr()}
@@ -1410,6 +1410,70 @@ function handleLocalAPI(u,o={}){
     let fixed=0;(localDB.questions||[]).forEach(q=>{if(!q.subject||q.subject===''){q.subject='math';fixed++}});
     if(fixed>0)saveLocalDB();
     return Promise.resolve({success:true,fixed_null_subjects_to_math:fixed});
+  }
+  if(path==='/api/tags'&&method==='GET'){
+    const qs=filterLocalQuestions(params.get('subject')||'');
+    const tags=new Set();
+    qs.forEach(q=>{(q.knowledge_tags||'').split(',').filter(Boolean).forEach(t=>tags.add(t))});
+    return Promise.resolve([...tags].sort());
+  }
+  if(path==='/api/study-time'&&method==='POST'){
+    const body=JSON.parse(o.body||'{}');
+    localDB.study_sessions=localDB.study_sessions||[];
+    localDB.study_sessions.push({...body,date:todayStr()});
+    saveLocalDB();
+    return Promise.resolve({success:true});
+  }
+  if(path==='/api/questions/batch-delete'&&method==='POST'){
+    const ids=new Set(JSON.parse(o.body||'{}').ids||[]);
+    const before=localDB.questions.length;
+    localDB.questions=localDB.questions.filter(q=>!ids.has(q.id));
+    saveLocalDB();
+    return Promise.resolve({deleted:before-localDB.questions.length});
+  }
+  if(path==='/api/reset-mastered'&&method==='POST'){
+    let reset=0;
+    (localDB.questions||[]).forEach(q=>{if(q.mastered){q.mastered=0;q.consecutive_correct=0;reset++}});
+    saveLocalDB();
+    return Promise.resolve({reset});
+  }
+  if(path==='/api/sync/import'&&method==='POST'){
+    const body=JSON.parse(o.body||'{}');
+    if(body.questions&&Array.isArray(body.questions)){
+      const local=localDB.questions||[];
+      const localMap=new Map(local.map(q=>[q.id,q]));
+      body.questions.forEach(q=>{
+        const old=localMap.get(q.id);
+        if(!old){local.push(q)}
+        else{
+          // 已有的：按日期裁决谁新听谁
+          const qd=q.last_practice_date||q.last_wrong_date||q.date_added||'';
+          const od=old.last_practice_date||old.last_wrong_date||old.date_added||'';
+          if(qd>=od){Object.assign(old,q)}
+        }
+      });
+      saveLocalDB();
+    }
+    return Promise.resolve({success:true,total:(localDB.questions||[]).length});
+  }
+  if(path==='/api/backup/list'&&method==='GET'){
+    const keys=Object.keys(localStorage).filter(k=>k.startsWith('_offlineDB_v3')||k.startsWith('_db_backup_'));
+    const list=keys.map(k=>({filename:k,size:(localStorage.getItem(k)||'').length,date:new Date().toISOString()}));
+    return Promise.resolve(list);
+  }
+  if(path==='/api/backup/restore'&&method==='POST'){
+    const body=JSON.parse(o.body||'{}');
+    const key=body.filename||'_offlineDB_v3';
+    const data=localStorage.getItem(key);
+    if(!data)return Promise.resolve({success:false,error:'备份不存在'});
+    try{localDB=JSON.parse(data);saveLocalDB();return Promise.resolve({success:true})}
+    catch(e){return Promise.resolve({success:false,error:'备份损坏'})}
+  }
+  if(path==='/api/backup/automatic'&&method==='POST'){
+    saveLocalDB();
+    const backupKey='_db_backup_'+Date.now();
+    localStorage.setItem(backupKey,JSON.stringify(localDB));
+    return Promise.resolve({success:true,filename:backupKey});
   }
   if(path==='/health'){
     return Promise.resolve({status:'healthy',database:'local',version:'3.5.0-local'});
