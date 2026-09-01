@@ -1503,25 +1503,31 @@ function switchSubject(subject){
   if(activeTab==='stats')loadStats();
 }
 
-// API - 先试Railway(2秒超时)，失败后用本地数据
+// API - 赛跑模式：同时跑 Railway 和本地，谁先返回非 null 用谁
+// 核心解决：以前串行等 Railway 2 秒超时才 fallback → 用户在这 2 秒里点按钮没反应
+// 现在本地是同步毫秒级返回 → 立刻响应，不被 Railway 阻塞
 async function api(u,o={}){
   if(!localDB)await loadLocalDB();
-  if(!useLocalMode){
+  const localP=(async()=>{const r=await handleLocalAPI(u,o);return r===null?null:r})();
+  if(useLocalMode)return localP;
+  const railwayP=(async()=>{
     try{
       const ctrl=new AbortController();
       const tid=setTimeout(()=>ctrl.abort(),2000);
       const r=await fetch(RAILWAY_URL+u,{headers:{'Content-Type':'application/json'},...o,signal:ctrl.signal});
       clearTimeout(tid);
-      if(r.ok){return r.json()}
-    }catch(e){
-      console.log('Railway不可用，切换到本地模式');
-      useLocalMode=true;
-    }
-  }
-  // 本地模式
-  const result=await handleLocalAPI(u,o);
-  if(result===null){toast('功能暂不可用','err');return null}
-  return result;
+      if(r.ok)return await r.json();
+      return null;
+    }catch(e){return null}
+  })();
+  // 赛跑：谁先 resolve 就用谁（两个都 catch 了，不会 reject）
+  const result=await Promise.race([localP,railwayP]);
+  if(result!==null)return result;
+  // 都是 null → 再等一下另一个，看看是不是 race 没等到它的有效结果
+  const [lr,rr]=await Promise.allSettled([localP,railwayP]);
+  if(lr.status==='fulfilled'&&lr.value!==null){useLocalMode=true;return lr.value}
+  if(rr.status==='fulfilled'&&rr.value!==null){useLocalMode=false;return rr.value}
+  toast('功能暂不可用','err');return null;
 }
 
 // 路由
