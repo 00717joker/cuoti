@@ -1,6 +1,6 @@
 {
   "version": "v3",
-  "synced_at": "2026-09-01T13:26:24.908Z",
+  "synced_at": "2026-09-01T13:55:24.719Z",
   "device": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/15",
   "questions": [
     {
@@ -7164,6 +7164,46 @@
       "difficulty": "",
       "question_type": "",
       "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260901_lfp868cnw.jpg"
+    },
+    {
+      "id": 378,
+      "question_number": "106.3",
+      "subject": "math",
+      "chapter": "U1",
+      "section": "真题",
+      "source": "",
+      "note": "",
+      "wrong_count": 1,
+      "consecutive_correct": 0,
+      "mastered": 0,
+      "date_added": "2026-09-01",
+      "last_wrong_date": "2026-09-01",
+      "last_practice_date": null,
+      "error_type": "",
+      "knowledge_tags": "",
+      "difficulty": "",
+      "question_type": "",
+      "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260901_nmi2ov8i8r.jpg"
+    },
+    {
+      "id": 379,
+      "question_number": "106.4",
+      "subject": "math",
+      "chapter": "U1",
+      "section": "真题",
+      "source": "",
+      "note": "",
+      "wrong_count": 1,
+      "consecutive_correct": 0,
+      "mastered": 0,
+      "date_added": "2026-09-01",
+      "last_wrong_date": "2026-09-01",
+      "last_practice_date": null,
+      "error_type": "",
+      "knowledge_tags": "",
+      "difficulty": "",
+      "question_type": "",
+      "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260901_1bcuniu9ig1.jpg"
     }
   ],
   "practice_results": [
@@ -7555,12 +7595,6 @@
     },
     {
       "question_id": 294,
-      "date": "2026-09-01",
-      "result": "correct",
-      "error_type": ""
-    },
-    {
-      "question_id": 42,
       "date": "2026-09-01",
       "result": "correct",
       "error_type": ""
