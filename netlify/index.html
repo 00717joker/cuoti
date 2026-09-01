@@ -1509,7 +1509,7 @@ function switchSubject(subject){
 async function api(u,o={}){
   if(!localDB)await loadLocalDB();
   const localP=(async()=>{const r=await handleLocalAPI(u,o);return r===null?null:r})();
-  if(useLocalMode)return localP;
+  if(useLocalMode){const r=await localP;return normalizeApiResult(r)}
   const railwayP=(async()=>{
     try{
       const ctrl=new AbortController();
@@ -1521,13 +1521,23 @@ async function api(u,o={}){
     }catch(e){return null}
   })();
   // 赛跑：谁先 resolve 就用谁（两个都 catch 了，不会 reject）
-  const result=await Promise.race([localP,railwayP]);
-  if(result!==null)return result;
-  // 都是 null → 再等一下另一个，看看是不是 race 没等到它的有效结果
+  const raw=await Promise.race([localP,railwayP]);
+  if(raw!==null)return normalizeApiResult(raw);
+  // 都是 null → 再等一下另一个
   const [lr,rr]=await Promise.allSettled([localP,railwayP]);
-  if(lr.status==='fulfilled'&&lr.value!==null){useLocalMode=true;return lr.value}
-  if(rr.status==='fulfilled'&&rr.value!==null){useLocalMode=false;return rr.value}
+  if(lr.status==='fulfilled'&&lr.value!==null){useLocalMode=true;return normalizeApiResult(lr.value)}
+  if(rr.status==='fulfilled'&&rr.value!==null){useLocalMode=false;return normalizeApiResult(rr.value)}
   toast('功能暂不可用','err');return null;
+}
+// 兼容层：handleLocalAPI 返回 {success:true,...}，Railway 返回 {ok:true,...}
+// 调用方混用 r.ok / r.success，这里统一补齐
+function normalizeApiResult(r){
+  if(r===null||r===undefined)return r;
+  if(Array.isArray(r))return r;
+  if(typeof r!=='object')return r;
+  if(r.ok===undefined&&r.success!==undefined){r.ok=!!r.success}
+  if(r.success===undefined&&r.ok!==undefined){r.success=!!r.ok}
+  return r;
 }
 
 // 路由
