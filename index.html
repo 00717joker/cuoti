@@ -444,10 +444,10 @@ header p{font-size:.75rem;margin-top:2px}
 .bank-card.selected{border-color:var(--pri);background:var(--pri-light)}
 .bank-card-img-wrap{position:relative;flex-shrink:0}
 .bank-card-img{width:60px;height:60px;object-fit:cover;border-radius:8px;background:var(--bd-light)}
-.bank-capture-btn{position:absolute;bottom:-4px;right:-4px;width:22px;height:22px;border-radius:50%;background:var(--pri);color:#fff;border:2px solid var(--card);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:.65rem;z-index:2;transition:transform .2s}
+.bank-capture-btn{position:absolute;bottom:-4px;right:-4px;width:22px;height:22px;border-radius:50%;background:var(--pri);color:#fff;border:2px solid var(--card);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:.65rem;z-index:10;transition:transform .2s}
 .bank-capture-btn:hover{transform:scale(1.15)}
-.bank-capture-btn.no-img{background:var(--t3);bottom:50%;right:50%;transform:translate(50%,50%)}
-.bank-capture-btn.no-img:hover{transform:translate(50%,50%) scale(1.1)}
+.bank-capture-btn.no-img{background:var(--t3);color:#fff;cursor:pointer;bottom:-4px;right:-4px;transform:none}
+.bank-capture-btn.no-img:hover{transform:scale(1.1)}
 .bank-card-info{flex:1;min-width:0}
 .bank-card-header{display:flex;align-items:center;gap:8px;margin-bottom:4px}
 .bank-card-qn{font-weight:700;color:var(--pri);font-size:.9rem}
@@ -2909,7 +2909,7 @@ const tags=(q.knowledge_tags||'').split(',').filter(Boolean).slice(0,3).map(t=>`
 const hasImg=!!q.image_data;
 const imgThumb=hasImg?`<img data-src="${q.image_data}" class="bank-card-img lazy-img" onclick="event.stopPropagation();openImageViewer('${q.image_data}')" title="点击查看大图" style="cursor:pointer">`:'<div class="bank-card-img" style="display:flex;align-items:center;justify-content:center;color:var(--t3);font-size:.7rem;width:60px;height:60px">&#128247;</div>';
 const captureBtn=`<button class="bank-capture-btn ${hasImg?'':'no-img'}" onclick="event.stopPropagation();openCaptureModal(${q.id})" title="${hasImg?'重新拍照':'添加图片'}">📷</button>`;
-return`<div class="bank-card" data-id="${q.id}" onclick="toggleBankSelect(${q.id})"><div class="bank-card-check" id="bankCheck-${q.id}"></div><div class="bank-card-img-wrap">${imgThumb}${captureBtn}</div><div class="bank-card-info"><div class="bank-card-header"><span class="bank-card-qn">${esc(q.question_number)}</span><span class="bank-card-ch">${esc(q.chapter)}</span></div><div class="bank-card-meta">${esc(q.section||'')} · ${esc(q.source||'')} · ${q.wrong_count||1}次错误</div><div class="bank-card-footer">${etype}${tags}<span style="font-size:.7rem;color:${msColor};font-weight:600;margin-left:auto">${ms}</span></div></div></div>`;
+return`<div class="bank-card" data-id="${q.id}" onclick="toggleBankSelect(${q.id})"><div class="bank-card-check" id="bankCheck-${q.id}" onclick="event.stopPropagation();toggleBankSelect(${q.id})"></div><div class="bank-card-img-wrap">${imgThumb}${captureBtn}</div><div class="bank-card-info"><div class="bank-card-header"><span class="bank-card-qn">${esc(q.question_number)}</span><span class="bank-card-ch">${esc(q.chapter)}</span></div><div class="bank-card-meta">${esc(q.section||'')} · ${esc(q.source||'')} · ${q.wrong_count||1}次错误</div><div class="bank-card-footer">${etype}${tags}<span style="font-size:.7rem;color:${msColor};font-weight:600;margin-left:auto">${ms}</span></div></div></div>`;
 }).join('');
 renderBankPagination(totalPages);
 initLazyLoad();
@@ -3659,15 +3659,11 @@ function initLazyLoad(root){
                   ph.style.cssText='min-width:140px;min-height:100px;padding:10px;border-radius:8px;background:var(--warn-bg, #fff5e0);color:var(--warn, #8a5a00);font-size:.75rem;display:flex;flex-direction:column;gap:4px;align-items:center;justify-content:center;cursor:pointer;';
                   ph.innerHTML=`<b style="font-size:.8rem;">⚠️ 图片加载失败</b><span>可能原因：GitHub Pages 同步延迟 / 文件缺失</span><button type="button" style="margin-top:4px;padding:2px 10px;font-size:.7rem;cursor:pointer;">🔁 点击重试</button><div style="font-size:.6rem;color:var(--t3);word-break:break-all;max-width:300px;">${(originalRef||'').slice(0,140)}</div>`;
                 }
-                ph.addEventListener('click',(ev)=>{
-                  if(ev){
-                    ev.stopPropagation();
-                    ev.stopImmediatePropagation && ev.stopImmediatePropagation();
-                    if(typeof ev.preventDefault==='function')ev.preventDefault();
-                  }
-                },true); // capture 阶段先拦，杜绝冒泡到 bank 行上的任何 capture 控件
+                // 只在占位根元素上注册一个 bubble 阶段监听器：
+                //   - 点击占位/重试按钮 → 阻止冒泡到 bank-card（避免误触发 toggleBankSelect）
+                //   - 但不 stopImmediatePropagation，所以占位内部按钮自身的 click 回调能正常触发
                 ph.addEventListener('click',async(ev)=>{
-                  if(ev&&typeof ev.stopPropagation==='function')ev.stopPropagation();
+                  if(ev)ev.stopPropagation();
                   if(ph.dataset.retrying==='1')return;
                   ph.dataset.retrying='1';
                   const btn=ph.querySelector('button');
