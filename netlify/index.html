@@ -1322,7 +1322,7 @@ function handleLocalAPI(u,o={}){
   if(path==='/api/practice/result'&&method==='POST'){
     const body=JSON.parse(o.body||'{}');
     const q=localDB.questions.find(q=>q.id===body.question_id);
-    if(q){q.last_practice_date=todayStr();if(body.result==='correct'){q.consecutive_correct=(q.consecutive_correct||0)+1;if(q.consecutive_correct>=3)q.mastered=1}else{q.consecutive_correct=0;q.mastered=0;q.wrong_count=(q.wrong_count||1)+1;q.last_wrong_date=todayStr()}
+    if(q){q.last_practice_date=todayStr();if(body.result==='correct'){q.consecutive_correct=(q.consecutive_correct||0)+1;if(q.consecutive_correct>=1)q.mastered=1}else{q.consecutive_correct=0;q.mastered=0;q.wrong_count=(q.wrong_count||1)+1;q.last_wrong_date=todayStr()}
     localDB.practice_results=localDB.practice_results||[];localDB.practice_results.push({question_id:body.question_id,date:todayStr(),result:body.result,error_type:body.error_type||''});
     saveLocalDB();}
     return Promise.resolve({success:true,mastered:q?q.mastered:0});
