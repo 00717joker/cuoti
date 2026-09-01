@@ -1322,7 +1322,7 @@ function handleLocalAPI(u,o={}){
   if(path==='/api/practice/result'&&method==='POST'){
     const body=JSON.parse(o.body||'{}');
     const q=localDB.questions.find(q=>q.id===body.question_id);
-    if(q){q.last_practice_date=todayStr();if(body.result==='correct'){q.consecutive_correct=(q.consecutive_correct||0)+1;if(q.consecutive_correct>=1)q.mastered=1}else{q.consecutive_correct=0;q.mastered=0;q.wrong_count=(q.wrong_count||1)+1;q.last_wrong_date=todayStr()}
+    if(q){q.last_practice_date=todayStr();if(body.result==='correct'){q.consecutive_correct=(q.consecutive_correct||0)+1;if(q.consecutive_correct>=3)q.mastered=1}else{q.consecutive_correct=0;q.mastered=0;q.wrong_count=(q.wrong_count||1)+1;q.last_wrong_date=todayStr()}
     localDB.practice_results=localDB.practice_results||[];localDB.practice_results.push({question_id:body.question_id,date:todayStr(),result:body.result,error_type:body.error_type||''});
     saveLocalDB();}
     return Promise.resolve({success:true,mastered:q?q.mastered:0});
@@ -2146,8 +2146,20 @@ function dedupeQuestions(qs){
       if((q.wrong_count||0)>(old.wrong_count||0))old.wrong_count=q.wrong_count;
       // consecutive_correct 取较大值
       if((q.consecutive_correct||0)>(old.consecutive_correct||0))old.consecutive_correct=q.consecutive_correct;
-      // mastered 取 true
-      if(q.mastered)old.mastered=1;
+      // mastered：**取较新的状态**（比较 last_practice_date 或 last_wrong_date，谁近听谁）
+      // 关键修复："已掌握后又做错"的回退场景——远端 DB 同步回来的 mastered=0
+      // 不能被本地 merge 时的 mastered=1 覆盖。用日期做裁决：
+      const q_date=q.last_practice_date||q.last_wrong_date||'';
+      const old_date=old.last_practice_date||old.last_wrong_date||'';
+      if(q_date&&(!old_date||q_date>=old_date)){
+        // 新数据更"新鲜"，用它的 mastered
+        if(q.mastered)old.mastered=1;else old.mastered=0;
+      } else if(!q_date){
+        // 新数据完全没日期（纯 db.json 同步过来的旧记录），保留旧值
+      } else {
+        // 旧数据更"新鲜"（本地刚做错了，远端还是 mastered=1 的旧状态）
+        // 保持 old.mastered 不动（可能是 0 也可能是 1）
+      }
       // last_wrong_date 取较新
       if(q.last_wrong_date&&(!old.last_wrong_date||q.last_wrong_date>old.last_wrong_date))old.last_wrong_date=q.last_wrong_date;
       // last_practice_date 取较新
