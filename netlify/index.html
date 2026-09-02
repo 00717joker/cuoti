@@ -1319,7 +1319,7 @@ function handleLocalAPI(u,o={}){
   if(path==='/api/daily-practice/dates'&&method==='GET'){
     return Promise.resolve([]);
   }
-  if((path==='/api/practice/result'||path==='/api/practice-result')&&method==='POST'){
+  if((path==='/api/practice/result'||path==='/api/practice/result')&&method==='POST'){
     const body=JSON.parse(o.body||'{}');
     const q=localDB.questions.find(q=>q.id===body.question_id);
     if(q){q.last_practice_date=todayStr();if(body.result==='correct'){q.consecutive_correct=(q.consecutive_correct||0)+1;if(q.consecutive_correct>=1)q.mastered=1}else{q.consecutive_correct=0;q.mastered=0;q.wrong_count=(q.wrong_count||1)+1;q.last_wrong_date=todayStr()}
@@ -2841,7 +2841,7 @@ async function markCorrect(qid){await markResult(qid,'correct')}
 function openErrorModal(qid){pendingMarkQid=qid;$('#errorModal').style.display='flex';$$('#etypeBtns button').forEach(b=>b.classList.remove('sel'))}
 async function markResult(qid,result,error_type=''){
 timerQuestionCount++;
-const r=await api('/api/practice-result',{method:'POST',body:JSON.stringify({question_id:qid,result,error_type})});
+const r=await api('/api/practice/result',{method:'POST',body:JSON.stringify({question_id:qid,result,error_type})});
 if(r&&r.ok){await refreshStats();await loadPractice()}
 }
 async function refreshPractice(){
@@ -2903,7 +2903,7 @@ if(pendingPrevQid!==null){await markPrevResult(pendingPrevQid,'wrong',pendingPre
 else if(pendingMarkQid!==null){await markResult(pendingMarkQid,'wrong',etype||'');pendingMarkQid=null}
 }
 async function markPrevResult(qid,result,dateStr,error_type=''){
-await api('/api/practice-result',{method:'POST',body:JSON.stringify({question_id:qid,result,error_type})});
+await api('/api/practice/result',{method:'POST',body:JSON.stringify({question_id:qid,result,error_type})});
 await loadPrevDate();refreshStats();
 }
 
@@ -2940,7 +2940,7 @@ return`<li class="bt-ri ${cls}"><span class="bt-qn">${esc(q.question_number)}</s
 
 async function markBtResult(qid,result){
 btResults[qid]=result;
-await api('/api/practice-result',{method:'POST',body:JSON.stringify({question_id:qid,result,error_type:''})});
+await api('/api/practice/result',{method:'POST',body:JSON.stringify({question_id:qid,result,error_type:''})});
 renderBtList();
 if(Object.values(btResults).every(r=>r!==null)){toast('突破完成！','ok');recordTimeEnd();}
 refreshStats();
@@ -3113,7 +3113,7 @@ $('#predRow').innerHTML=data.remaining===0?
 `<div class="pred-big"><div class="pb-val accent">${predDate||'--'}</div><div class="pb-label">预计完成日期</div></div>
 <div class="pred-big"><div class="pb-val">${data.predicted_days>0?data.predicted_days+'天':'--'}</div><div class="pb-label">预计还需</div></div>
 <div class="pred-big"><div class="pb-val warn">${data.remaining}</div><div class="pb-label">剩余题数</div></div>
-<div class="pred-big"><div class="pb-val">${data.daily_avg_practiced||0}题</div><div class="pb-label">日均做题</div></div>`;
+<div class="pred-big"><div class="pb-val">${data.daily_avg_mastered||0}题</div><div class="pb-label">日均掌握</div></div>`;
 $('#predSuggestion').innerHTML=msg;
 // 章节预测
 if(data.chapter_predictions&&data.chapter_predictions.length>0){
@@ -3141,11 +3141,11 @@ return`<tr><td>${esc(d.chapter)}</td><td>${esc(d.difficulty)}</td><td>${esc(d.er
 }).join(''):'<tr><td colspan="6" class="empty">暂无交叉数据</td></tr>';
 
 // 模块2：遗忘曲线
-const fc=data.forgetting_curve;
-$('#fcRegressed').textContent=fc.total_regressed+'题';
-$('#fcRate').textContent=fc.regression_rate+'%';
+const fcCurve=data.forgetting_curve||[];
+$('#fcRegressed').textContent=(data.regressed_questions||[]).length+'题';
+$('#fcRate').textContent=(data.regression_rate||0)+'%';
 // 遗忘曲线图
-if(fc.curve_data.length>0){
+if(fcCurve.length>0){
 const cv=$('#forgetCanvas')[0];if(!cv)return;
 const ctx=cv.getContext('2d');const dpr=window.devicePixelRatio||1;
 const rect=cv.parentElement.getBoundingClientRect();
@@ -3153,7 +3153,7 @@ cv.width=rect.width*dpr;cv.height=120*dpr;ctx.scale(dpr,dpr);
 const w=rect.width-20,h=100;
 ctx.clearRect(0,0,w+20,h+20);
 ctx.strokeStyle='#6366f1';ctx.lineWidth=1.5;ctx.beginPath();
-const pts=fc.curve_data;
+const pts=fcCurve;
 const maxDays=Math.max(...pts.map(p=>p.days),1);
 for(let i=0;i<pts.length;i++){const x=10+i*(w/pts.length);const y=10+(h-10)*(1-pts[i].retention/100);if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y)}ctx.stroke();
 ctx.globalAlpha=0.15;ctx.lineTo(10+pts.length*(w/pts.length),h+10);ctx.lineTo(10,h+10);ctx.closePath();ctx.fill();ctx.globalAlpha=1;
@@ -3165,17 +3165,17 @@ ctx.fillStyle='#9ca3af';ctx.textAlign='right';
 [100,75,50,25].forEach(v=>{const y=10+(h-10)*(1-v/100);ctx.fillText(v+'%',w+14,y+4)});
 }
 // 遗忘区间
-const intvs=fc.forgetting_intervals;
+const intvs=data.forgetting_intervals||{};
 $('#fcIntervals').innerHTML=Object.entries(intvs).map(([k,v])=>`<div class="intv"><div class="iv">${v}题</div><div class="il">${k}</div></div>`).join('');
 // 遗忘章节
-const fcChs=fc.forgetting_by_chapter||[];
+const fcChs=data.forgetting_by_chapter||[];
 const maxFc=Math.max(...fcChs.map(c=>c.count),1);
 $('#fcChapters').innerHTML=fcChs.length?`<div class="fc-chbars">${fcChs.slice(0,5).map(c=>`<div class="fc-chb"><span class="fcc-name">${esc(c.chapter)}</span><div class="fcc-bar"><div class="fcc-fill" style="width:${c.count/maxFc*100}%"></div></div><span class="fcc-n">${c.count}</span></div>`).join('')}</div>`:'<div style="color:var(--t2);font-size:.65rem">无</div>';
 // 遗忘标签
-const fcTgs=fc.forgetting_by_tag||[];
+const fcTgs=data.forgetting_by_tag||[];
 $('#fcTags').innerHTML=fcTgs.length?`<div class="fc-tags">${fcTgs.map(t=>`<span class="fct">${esc(t.tag)} ${t.count}</span>`).join('')}</div>`:'<div style="color:var(--t2);font-size:.65rem">无</div>';
 // 回生题目列表
-const regs=fc.regressed_questions||[];
+const regs=data.regressed_questions||[];
 $('#fcList').innerHTML=regs.length?regs.map(r=>`<li><span class="fc-qn">${esc(r.question_number)}</span><span class="fc-ch">${esc(r.chapter)}</span><span class="fc-days">${r.days_to_forget}天</span></li>`).join(''):'<li style="color:var(--t2)">暂无回生题目</li>';
 
 // 模块3：效率画像
@@ -3189,11 +3189,11 @@ $('#effBest').textContent=eff.best_period||'--';
 
 if(eff.efficiency_trend!=='insufficient_data'){
 $('#effCompare').style.display='';
-$('#effAccCmp').textContent=eff.early_avg_accuracy+'% → '+eff.late_avg_accuracy+'%';
-$('#effSpeedCmp').textContent=eff.early_avg_speed+' → '+eff.late_avg_speed+' 题/分钟';
+$('#effAccCmp').textContent=eff.early_accuracy+'% → '+eff.late_accuracy+'%';
+$('#effSpeedCmp').textContent=eff.early_speed+' → '+eff.late_speed+' 题/分钟';
 }else{$('#effCompare').style.display='none'}
 
-const periods=eff.peak_periods||[];
+const periods=eff.periods||[];
 const maxAcc=Math.max(...periods.map(p=>p.avg_accuracy),1);
 $('#effPeriods').innerHTML=periods.length?
 '<h4 style="font-size:.75rem;font-weight:600;color:var(--t2);margin-bottom:4px">各时段表现</h4>'+
@@ -3797,8 +3797,8 @@ document.addEventListener('DOMContentLoaded',()=>{
 // ═══ 数据备份 ═══
 async function createBackup(){
 const r=await api('/api/backup',{method:'POST'});
-if(r&&r.ok){
-toast(`备份成功！共${r.question_count}题`, 'ok');
+if(r&&r.success){
+toast(`备份成功！共${r.count}题`, 'ok');
 loadBackupList();
 }
 else{
@@ -3810,13 +3810,13 @@ async function loadBackupList(){
 const r=await api('/api/backup/list');
 if(!r)return;
 const list=$('#backupList');
-if(!r.backups||r.backups.length===0){
+if(!r||r.length===0){
 list.innerHTML='<div style="text-align:center;color:var(--t3);padding:16px">暂无备份</div>';
 list.style.display='block';
 return;
 }
-list.innerHTML=r.backups.map(b=>{
-const dateStr=new Date(b.mtime).toLocaleString('zh-CN');
+list.innerHTML=r.map(b=>{
+const dateStr=new Date(b.timestamp).toLocaleString('zh-CN');
 const sizeKB=(b.size/1024).toFixed(1);
 return`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg);border-radius:var(--r-sm);margin-bottom:6px"><div><div style="font-size:.8rem;font-weight:600;color:var(--txt)">${b.filename}</div><div style="font-size:.65rem;color:var(--t3)">${dateStr} · ${sizeKB} KB</div></div><div style="display:flex;gap:4px"><button class="btn btn-o btn-xs" onclick="downloadBackup('${b.filename}')">下载</button><button class="btn btn-d btn-xs" onclick="restoreBackup('${b.filename}')">恢复</button></div></div>`;
 }).join('');
@@ -3824,14 +3824,14 @@ list.style.display='block';
 }
 
 function downloadBackup(filename){
-window.open(RAILWAY_URL+'/api/backup/download/'+filename,'_blank');
+window.open((typeof RAILWAY_URL!=='undefined'?RAILWAY_URL:'')+'/api/backup/download/'+filename,'_blank');
 }
 
 async function restoreBackup(filename){
 if(!confirm(`确定要恢复备份 "${filename}" 吗？这将覆盖当前所有数据！`))return;
 const r=await api('/api/backup/restore',{method:'POST',body:JSON.stringify({filename})});
-if(r&&r.ok){
-toast(`已恢复 ${r.questions_restored} 道题`, 'ok');
+if(r&&r.success){
+toast(`已恢复 ${r.count} 道题`, 'ok');
 loadBackupList();
 refreshStats();
 switchTab('bank');
