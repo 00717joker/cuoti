@@ -293,6 +293,23 @@ def get_setting(key, default=None):
     s = session.query(Setting).filter_by(key=key).first()
     return s.value if s else default
 
+@app.route('/api/settings', methods=['GET', 'POST'])
+def settings_api():
+    session = get_session()
+    if request.method == 'POST':
+        data = request.get_json()
+        for key, value in data.items():
+            s = session.query(Setting).filter_by(key=key).first()
+            if s:
+                s.value = str(value)
+            else:
+                session.add(Setting(key=key, value=str(value)))
+        session.commit()
+        return jsonify({'success': True})
+    else:
+        settings = session.query(Setting).all()
+        return jsonify({s.key: s.value for s in settings})
+
 @app.route('/')
 def index():
     import os
@@ -1104,21 +1121,23 @@ def get_trends():
         mastery_trend.append({'date': d, 'pct': pct})
         duration_trend.append({'date': d, 'minutes': 0})
     
-    mastery_trend = mastery_trend[-7:]
-    duration_trend = duration_trend[-7:]
+    mastery_trend_data = mastery_trend[-7:]
+    duration_trend_data = duration_trend[-7:]
     
-    mastery_trend_values = [d['pct'] for d in mastery_trend]
+    mastery_trend_values = [d['pct'] for d in mastery_trend_data]
     if len(mastery_trend_values) >= 2:
-        mastery_trend = 'up' if mastery_trend_values[-1] > mastery_trend_values[0] else 'down' if mastery_trend_values[-1] < mastery_trend_values[0] else 'stable'
+        mastery_dir = 'up' if mastery_trend_values[-1] > mastery_trend_values[0] else 'down' if mastery_trend_values[-1] < mastery_trend_values[0] else 'stable'
     else:
-        mastery_trend = 'stable'
+        mastery_dir = 'stable'
     
-    duration_trend = 'stable'
+    duration_dir = 'stable'
     
     return jsonify({
         'trend': trend_data,
-        'mastery_trend': mastery_trend,
-        'duration_trend': duration_trend
+        'mastery_trend': mastery_trend_data,
+        'mastery_direction': mastery_dir,
+        'duration_trend': duration_trend_data,
+        'duration_direction': duration_dir
     })
 
 @app.route('/api/stats/deep-analysis', methods=['GET'])
@@ -1582,6 +1601,60 @@ def batch_delete_questions():
             session.delete(q)
     session.commit()
     return jsonify({'ok': True})
+
+@app.route('/api/reset-mastered', methods=['POST'])
+def reset_mastered():
+    """重置所有题目的掌握状态"""
+    session = get_session()
+    session.query(WrongQuestion).update({WrongQuestion.mastered: 0, WrongQuestion.consecutive_correct: 0})
+    session.commit()
+    auto_backup_to_file()
+    return jsonify({'success': True})
+
+@app.route('/api/study-time', methods=['POST'])
+def record_study_time():
+    """记录学习时间"""
+    data = request.get_json()
+    # 简单处理，只返回成功
+    return jsonify({'success': True})
+
+@app.route('/api/sync/import', methods=['POST'])
+def sync_import():
+    """从外部同步导入数据"""
+    data = request.get_json()
+    session = get_session()
+    imported = 0
+    for q in data.get('questions', []):
+        existing = session.query(WrongQuestion).filter(
+            WrongQuestion.question_number == q.get('question_number', ''),
+            WrongQuestion.subject == q.get('subject', 'math'),
+            WrongQuestion.chapter == q.get('chapter', ''),
+            WrongQuestion.section == q.get('section', '')
+        ).first()
+        if not existing:
+            session.add(WrongQuestion(
+                question_number=q.get('question_number', ''),
+                subject=q.get('subject', 'math'),
+                chapter=q.get('chapter', ''),
+                section=q.get('section', ''),
+                source=q.get('source', ''),
+                note=q.get('note', ''),
+                error_type=q.get('error_type', ''),
+                knowledge_tags=q.get('knowledge_tags', ''),
+                difficulty=q.get('difficulty', ''),
+                question_type=q.get('question_type', ''),
+                image_data=q.get('image_data'),
+                wrong_count=q.get('wrong_count', 1),
+                mastered=q.get('mastered', 0),
+                consecutive_correct=q.get('consecutive_correct', 0),
+                date_added=q.get('date_added', str(date.today())),
+                last_wrong_date=q.get('last_wrong_date', str(date.today()))
+            ))
+            imported += 1
+    session.commit()
+    if imported > 0:
+        auto_backup_to_file()
+    return jsonify({'success': True, 'imported': imported})
 
 @app.route('/api/export/pdf', methods=['GET'])
 def export_pdf():
