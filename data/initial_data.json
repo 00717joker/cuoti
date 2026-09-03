@@ -1,6 +1,6 @@
 {
   "version": "v3",
-  "backup_time": "2026-09-03T17:54:48.475004",
+  "backup_time": "2026-09-03T18:47:38.427017",
   "questions": [
     {
       "id": 1,
@@ -7200,7 +7200,7 @@
       "knowledge_tags": "",
       "difficulty": "",
       "question_type": "",
-      "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260828_70m65gamkb.jpg"
+      "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260903_1oreuoob016.jpg"
     },
     {
       "id": 361,
@@ -7554,5 +7554,12 @@
       "value": ""
     }
   ],
-  "daily_practice": []
+  "daily_practice": [
+    {
+      "id": 1,
+      "date": "2026-09-03",
+      "questions": "[17, 43, 74, 125, 136, 138, 167, 251, 292, 324, 327, 335, 365, 366, 371]",
+      "created_at": "2026-09-03T18:45:33.396952"
+    }
+  ]
 }
