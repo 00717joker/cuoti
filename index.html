@@ -1513,21 +1513,20 @@ async function api(u,o={}){
   const railwayP=(async()=>{
     try{
       const ctrl=new AbortController();
-      const tid=setTimeout(()=>ctrl.abort(),15000);
+      const tid=setTimeout(()=>ctrl.abort(),8000);
       const r=await fetch(RAILWAY_URL+u,{headers:{'Content-Type':'application/json'},...o,signal:ctrl.signal});
       clearTimeout(tid);
       if(r.ok)return await r.json();
       return null;
     }catch(e){return null}
   })();
-  // 赛跑：谁先 resolve 就用谁（两个都 catch 了，不会 reject）
-  const raw=await Promise.race([localP,railwayP]);
+  // 后端优先：先等后端(最多8秒)，失败再用本地缓存
+  const raw=await railwayP;
   if(raw!==null)return normalizeApiResult(raw);
-  // 都是 null → 再等一下另一个
-  const [lr,rr]=await Promise.allSettled([localP,railwayP]);
-  if(lr.status==='fulfilled'&&lr.value!==null){useLocalMode=true;return normalizeApiResult(lr.value)}
-  if(rr.status==='fulfilled'&&rr.value!==null){useLocalMode=false;return normalizeApiResult(rr.value)}
-  toast('功能暂不可用','err');return null;
+  // 后端失败 → 用本地
+  const lr=await localP;
+  if(lr!==null){return normalizeApiResult(lr)}
+  toast('功能暂不可用，请检查网络','err');return null;
 }
 // 兼容层：handleLocalAPI 返回 {success:true,...}，Railway 返回 {ok:true,...}
 // 调用方混用 r.ok / r.success，这里统一补齐
