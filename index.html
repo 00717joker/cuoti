@@ -950,7 +950,7 @@ const ETYPES={careless:'粗心失误',concept:'概念不清',calculation:'计算
 const ECLASS={careless:'badge-careless',concept:'badge-concept',calculation:'badge-calculation',method:'badge-method'};
 let currentSubject='math';
 const SUBJECT_LABELS={math:'高数',linear:'线代',probability:'概率'};
-const RAILWAY_URL='https://cuoti-production.up.railway.app';
+const RAILWAY_URL='https://cuoti-api-307508-12-1480362933.sh.run.tcloudbase.com';
 let useLocalMode=false;
 let localDB=null;
 const DB_CACHE_KEY='_offlineDB_v3';
@@ -1513,7 +1513,7 @@ async function api(u,o={}){
   const railwayP=(async()=>{
     try{
       const ctrl=new AbortController();
-      const tid=setTimeout(()=>ctrl.abort(),2000);
+      const tid=setTimeout(()=>ctrl.abort(),15000);
       const r=await fetch(RAILWAY_URL+u,{headers:{'Content-Type':'application/json'},...o,signal:ctrl.signal});
       clearTimeout(tid);
       if(r.ok)return await r.json();
