@@ -1,6 +1,6 @@
 {
   "version": "v3",
-  "synced_at": "2026-09-03T10:46:24.480Z",
+  "synced_at": "2026-09-08T07:57:33.654Z",
   "device": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/15",
   "questions": [
     {
@@ -6794,16 +6794,16 @@
       "source": "",
       "note": "",
       "wrong_count": 1,
-      "consecutive_correct": 0,
-      "mastered": 0,
+      "consecutive_correct": 1,
+      "mastered": 1,
       "date_added": "2026-08-28",
       "last_wrong_date": "2026-08-28",
-      "last_practice_date": null,
+      "last_practice_date": "2026-09-04",
       "error_type": "",
       "knowledge_tags": "",
       "difficulty": "",
       "question_type": "",
-      "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260831_1udiv34h9pe.jpg"
+      "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260903_1oreuoob016.jpg"
     },
     {
       "id": 360,
@@ -7204,6 +7204,26 @@
       "difficulty": "",
       "question_type": "",
       "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260901_1bcuniu9ig1.jpg"
+    },
+    {
+      "id": 380,
+      "question_number": "17.2",
+      "subject": "math",
+      "chapter": "U17",
+      "section": "18讲义例题",
+      "source": "",
+      "note": "",
+      "wrong_count": 1,
+      "consecutive_correct": 0,
+      "mastered": 0,
+      "date_added": "2026-09-08",
+      "last_wrong_date": "2026-09-08",
+      "last_practice_date": null,
+      "error_type": "",
+      "knowledge_tags": "",
+      "difficulty": "",
+      "question_type": "",
+      "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260908_1a44avd6s31.jpg"
     }
   ],
   "practice_results": [
@@ -7652,6 +7672,12 @@
       "date": "2026-09-01",
       "result": "wrong",
       "error_type": "method"
+    },
+    {
+      "question_id": 360,
+      "date": "2026-09-04",
+      "result": "correct",
+      "error_type": ""
     }
   ],
   "settings": [
