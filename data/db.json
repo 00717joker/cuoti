@@ -1,6 +1,6 @@
 {
   "version": "v3",
-  "synced_at": "2026-09-15T14:10:04.677Z",
+  "synced_at": "2026-09-15T14:18:57.936Z",
   "device": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/15",
   "questions": [
     {
@@ -1704,9 +1704,9 @@
       "wrong_count": 1,
       "date_added": "2026-06-05",
       "last_wrong_date": "2026-06-05",
-      "consecutive_correct": 0,
-      "mastered": 0,
-      "last_practice_date": null,
+      "consecutive_correct": 1,
+      "mastered": 1,
+      "last_practice_date": "2026-09-15",
       "error_type": "",
       "knowledge_tags": "",
       "difficulty": "",
@@ -7916,6 +7916,12 @@
     {
       "question_id": 360,
       "date": "2026-09-04",
+      "result": "correct",
+      "error_type": ""
+    },
+    {
+      "question_id": 91,
+      "date": "2026-09-15",
       "result": "correct",
       "error_type": ""
     }
