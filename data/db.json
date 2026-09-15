@@ -1,6 +1,6 @@
 {
   "version": "v3",
-  "synced_at": "2026-09-15T08:38:54.861Z",
+  "synced_at": "2026-09-15T14:10:04.677Z",
   "device": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/15",
   "questions": [
     {
@@ -1236,7 +1236,7 @@
       "knowledge_tags": "",
       "difficulty": "",
       "question_type": "",
-      "image_data": null
+      "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260915_10dt705cbc6.jpg"
     },
     {
       "id": 67,
