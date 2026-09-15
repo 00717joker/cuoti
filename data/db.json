@@ -1,6 +1,6 @@
 {
   "version": "v3",
-  "synced_at": "2026-09-15T14:18:57.936Z",
+  "synced_at": "2026-09-15T14:23:34.000Z",
   "device": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/15",
   "questions": [
     {
@@ -7253,12 +7253,12 @@
       "section": "18讲义例题",
       "source": "",
       "note": "",
-      "wrong_count": 1,
+      "wrong_count": 3,
       "consecutive_correct": 0,
       "mastered": 0,
       "date_added": "2026-09-08",
-      "last_wrong_date": "2026-09-08",
-      "last_practice_date": null,
+      "last_wrong_date": "2026-09-15",
+      "last_practice_date": "2026-09-15",
       "error_type": "",
       "knowledge_tags": "",
       "difficulty": "",
@@ -7924,6 +7924,18 @@
       "date": "2026-09-15",
       "result": "correct",
       "error_type": ""
+    },
+    {
+      "question_id": 382,
+      "date": "2026-09-15",
+      "result": "wrong",
+      "error_type": "method"
+    },
+    {
+      "question_id": 382,
+      "date": "2026-09-15",
+      "result": "wrong",
+      "error_type": "method"
     }
   ],
   "settings": [
