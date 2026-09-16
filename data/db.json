@@ -1,6 +1,6 @@
 {
   "version": "v3",
-  "synced_at": "2026-09-16T06:40:22.842Z",
+  "synced_at": "2026-09-16T06:47:03.518Z",
   "device": "Mozilla/5.0 (Linux; Android 16; V2324HA) AppleWebKit/537.36 (KHTML, like Gecko) ",
   "questions": [
     {
@@ -7204,6 +7204,26 @@
       "difficulty": "",
       "question_type": "",
       "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260916_4deprf1f5d.jpg"
+    },
+    {
+      "id": 380,
+      "question_number": "正定证明",
+      "subject": "math",
+      "chapter": "U1",
+      "section": "模拟卷",
+      "source": "",
+      "note": "",
+      "wrong_count": 1,
+      "consecutive_correct": 0,
+      "mastered": 0,
+      "date_added": "2026-09-16",
+      "last_wrong_date": "2026-09-16",
+      "last_practice_date": null,
+      "error_type": "",
+      "knowledge_tags": "",
+      "difficulty": "",
+      "question_type": "",
+      "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260916_14739twkz8p.jpg"
     }
   ],
   "practice_results": [
