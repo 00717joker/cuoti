@@ -1,6 +1,6 @@
 {
   "version": "v3",
-  "synced_at": "2026-09-17T00:39:13.349Z",
+  "synced_at": "2026-09-17T00:41:06.647Z",
   "device": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/15",
   "questions": [
     {
@@ -7244,6 +7244,26 @@
       "difficulty": "",
       "question_type": "",
       "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260916_1a2b8etixvp.jpg"
+    },
+    {
+      "id": 382,
+      "question_number": "数字特征",
+      "subject": "math",
+      "chapter": "U1",
+      "section": "真题",
+      "source": "",
+      "note": "",
+      "wrong_count": 2,
+      "consecutive_correct": 0,
+      "mastered": 0,
+      "date_added": "2026-09-17",
+      "last_wrong_date": "2026-09-17",
+      "last_practice_date": null,
+      "error_type": "",
+      "knowledge_tags": "",
+      "difficulty": "",
+      "question_type": "",
+      "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260917_1nyblo7ejim.jpg"
     }
   ],
   "practice_results": [
