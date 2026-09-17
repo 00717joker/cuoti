@@ -1,6 +1,6 @@
 {
   "version": "v3",
-  "synced_at": "2026-09-17T01:03:33.704Z",
+  "synced_at": "2026-09-17T04:27:18.936Z",
   "device": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/15",
   "questions": [
     {
@@ -7324,6 +7324,46 @@
       "difficulty": "",
       "question_type": "",
       "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260917_e8e2szkdk0.jpg"
+    },
+    {
+      "id": 386,
+      "question_number": "降维求方差",
+      "subject": "math",
+      "chapter": "U1",
+      "section": "真题",
+      "source": "",
+      "note": "",
+      "wrong_count": 1,
+      "consecutive_correct": 0,
+      "mastered": 0,
+      "date_added": "2026-09-17",
+      "last_wrong_date": "2026-09-17",
+      "last_practice_date": null,
+      "error_type": "",
+      "knowledge_tags": "",
+      "difficulty": "",
+      "question_type": "",
+      "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260917_rb0fqa1y47.jpg"
+    },
+    {
+      "id": 387,
+      "question_number": "绝对值问题",
+      "subject": "math",
+      "chapter": "U1",
+      "section": "真题",
+      "source": "",
+      "note": "",
+      "wrong_count": 1,
+      "consecutive_correct": 0,
+      "mastered": 0,
+      "date_added": "2026-09-17",
+      "last_wrong_date": "2026-09-17",
+      "last_practice_date": null,
+      "error_type": "",
+      "knowledge_tags": "",
+      "difficulty": "",
+      "question_type": "",
+      "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260917_12vs9ow1fhx.jpg"
     }
   ],
   "practice_results": [
