@@ -1,6 +1,6 @@
 {
   "version": "v3",
-  "synced_at": "2026-09-17T04:27:18.936Z",
+  "synced_at": "2026-09-17T05:06:50.622Z",
   "device": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/15",
   "questions": [
     {
@@ -7364,6 +7364,26 @@
       "difficulty": "",
       "question_type": "",
       "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260917_12vs9ow1fhx.jpg"
+    },
+    {
+      "id": 388,
+      "question_number": "条件方差好题",
+      "subject": "math",
+      "chapter": "U1",
+      "section": "真题",
+      "source": "",
+      "note": "",
+      "wrong_count": 1,
+      "consecutive_correct": 0,
+      "mastered": 0,
+      "date_added": "2026-09-17",
+      "last_wrong_date": "2026-09-17",
+      "last_practice_date": null,
+      "error_type": "",
+      "knowledge_tags": "",
+      "difficulty": "",
+      "question_type": "",
+      "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260917_1o3do3d55v8.jpg"
     }
   ],
   "practice_results": [
