@@ -1,6 +1,6 @@
 {
   "version": "v3",
-  "synced_at": "2026-09-17T05:22:37.968Z",
+  "synced_at": "2026-09-17T05:47:28.129Z",
   "device": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/15",
   "questions": [
     {
@@ -7404,6 +7404,46 @@
       "difficulty": "",
       "question_type": "",
       "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260917_1riim4e2up3.jpg"
+    },
+    {
+      "id": 390,
+      "question_number": "不相关性难题",
+      "subject": "math",
+      "chapter": "U1",
+      "section": "真题",
+      "source": "",
+      "note": "",
+      "wrong_count": 1,
+      "consecutive_correct": 0,
+      "mastered": 0,
+      "date_added": "2026-09-17",
+      "last_wrong_date": "2026-09-17",
+      "last_practice_date": null,
+      "error_type": "",
+      "knowledge_tags": "",
+      "difficulty": "",
+      "question_type": "",
+      "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260917_19ht8ug3dky.jpg"
+    },
+    {
+      "id": 391,
+      "question_number": "不相关性独立性",
+      "subject": "math",
+      "chapter": "U1",
+      "section": "真题",
+      "source": "",
+      "note": "",
+      "wrong_count": 1,
+      "consecutive_correct": 0,
+      "mastered": 0,
+      "date_added": "2026-09-17",
+      "last_wrong_date": "2026-09-17",
+      "last_practice_date": null,
+      "error_type": "",
+      "knowledge_tags": "",
+      "difficulty": "",
+      "question_type": "",
+      "image_data": "gh:https://00717joker.github.io/cuoti/images/img_20260917_k6bsyi37ou.jpg"
     }
   ],
   "practice_results": [
